@@ -9,8 +9,12 @@ Java-Rechner fuer grundlegende Wahrscheinlichkeitsrechnung mit Swing-GUI.
 - bedingte Wahrscheinlichkeiten
 - Satz der totalen Wahrscheinlichkeit
 - Bayes-Rechnung fuer mehrere Faelle
+- Binomialverteilung mit exakter, kumulativer und Intervall-Wahrscheinlichkeit
+- Poissonverteilung mit exakter, kumulativer und Intervall-Wahrscheinlichkeit
+- Normalverteilung mit Links-, Intervall- und Rechtswahrscheinlichkeit
 - G*Power-orientiertes Desktop-Layout mit kompakten Eingabe- und Ausgabefeldern
-- Diagramme fuer Komplementanteile, Vierfelder-Zerlegung, bedingte Anteile und Bayes-Beitraege
+- Info-Buttons fuer jede Berechnungsart mit Eingabe- und Ergebnisbeschreibung
+- Diagramme fuer Komplementanteile, Vierfelder-Zerlegung, bedingte Anteile, Bayes-Beitraege und Verteilungen
 
 ## Starten
 

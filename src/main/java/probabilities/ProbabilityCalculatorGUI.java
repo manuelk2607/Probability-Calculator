@@ -54,6 +54,14 @@ public class ProbabilityCalculatorGUI extends JFrame {
     private JTextField likelihoodsField;
     private JTextField priorsField;
     private JTextField selectedIndexField;
+    private JTextField trialsField;
+    private JTextField successesField;
+    private JTextField lowerField;
+    private JTextField upperField;
+    private JTextField probabilityField;
+    private JTextField lambdaField;
+    private JTextField meanField;
+    private JTextField standardDeviationField;
 
     public ProbabilityCalculatorGUI() {
         super("Wahrscheinlichkeitsrechner");
@@ -226,6 +234,9 @@ public class ProbabilityCalculatorGUI extends JFrame {
             case JOINT -> createJointInputs(form);
             case CONDITIONAL -> createConditionalInputs(form);
             case BAYES -> createBayesInputs(form);
+            case BINOMIAL -> createBinomialInputs(form);
+            case POISSON -> createPoissonInputs(form);
+            case NORMAL -> createNormalInputs(form);
         }
 
         form.addBottomGlue();
@@ -238,7 +249,17 @@ public class ProbabilityCalculatorGUI extends JFrame {
         probBField = form.addField("Pr(B)", "0.40");
         form.addActionRow(
                 actionButton("Calculate", this::calculateComplement),
-                actionButton("Clear", this::clearCurrent)
+                actionButton("Clear", this::clearCurrent),
+                infoButton("Info", """
+                        Eingaben:
+                        Pr(A) und Pr(B) sind Wahrscheinlichkeiten zwischen 0 und 1.
+
+                        Ergebnisse:
+                        Pr(not A) = 1 - Pr(A)
+                        Pr(not B) = 1 - Pr(B)
+
+                        Das Diagramm zeigt jeweils Ereignis und Gegenereignis als Anteil am ganzen Ergebnisraum.
+                        """)
         );
     }
 
@@ -250,7 +271,16 @@ public class ProbabilityCalculatorGUI extends JFrame {
         form.addHint("Leave Pr(A and B) empty to assume independence.");
         form.addActionRow(
                 actionButton("Calculate", this::calculateJoint),
-                actionButton("Clear", this::clearCurrent)
+                actionButton("Clear", this::clearCurrent),
+                infoButton("Info", """
+                        Eingaben:
+                        Pr(A), Pr(B) und optional Pr(A and B). Wenn Pr(A and B) leer bleibt, wird Unabhängigkeit angenommen.
+
+                        Ergebnisse:
+                        Pr(A and B), Pr(A or B), Pr(A without B), Pr(B without A) und Pr(neither).
+
+                        Das Diagramm zerlegt den Ergebnisraum in A only, A and B, B only und Neither.
+                        """)
         );
     }
 
@@ -261,7 +291,17 @@ public class ProbabilityCalculatorGUI extends JFrame {
         probBField = form.addField("Pr(B)", "0.40");
         form.addActionRow(
                 actionButton("Calculate", this::calculateConditional),
-                actionButton("Clear", this::clearCurrent)
+                actionButton("Clear", this::clearCurrent),
+                infoButton("Info", """
+                        Eingaben:
+                        Pr(A and B), Pr(A) und Pr(B). Die Schnittwahrscheinlichkeit darf nicht größer als Pr(A) oder Pr(B) sein.
+
+                        Ergebnisse:
+                        Pr(A|B) = Pr(A and B) / Pr(B)
+                        Pr(B|A) = Pr(A and B) / Pr(A)
+
+                        Das Diagramm zeigt die bedingten Anteile im jeweiligen eingeschränkten Grundraum.
+                        """)
         );
     }
 
@@ -273,7 +313,83 @@ public class ProbabilityCalculatorGUI extends JFrame {
         form.addHint("Separate list values with semicolon or space. Pr(A_i) must sum to 1.");
         form.addActionRow(
                 actionButton("Calculate", this::calculateBayes),
-                actionButton("Clear", this::clearCurrent)
+                actionButton("Clear", this::clearCurrent),
+                infoButton("Info", """
+                        Eingaben:
+                        Liste Pr(B|A_i), Liste Pr(A_i) und der Index des gesuchten A_i. Beide Listen müssen gleich lang sein; Pr(A_i) muss zusammen 1 ergeben.
+
+                        Ergebnisse:
+                        Pr(B) nach dem Satz der totalen Wahrscheinlichkeit, Pr(A_i|B) nach Bayes und die Einzelbeiträge Pr(B|A_i) * Pr(A_i).
+
+                        Das Diagramm zeigt, welche A_i wie stark zu Pr(B) beitragen.
+                        """)
+        );
+    }
+
+    private void createBinomialInputs(FormPanel form) {
+        form.addSection("Input parameters");
+        trialsField = form.addField("Number of trials n", "10");
+        successesField = form.addField("Exact successes k", "3");
+        lowerField = form.addField("Lower bound", "0");
+        upperField = form.addField("Upper bound", "3");
+        probabilityField = form.addField("Success probability p", "0.50");
+        form.addHint("Calculates Pr(X = k), Pr(X <= k) and Pr(lower <= X <= upper).");
+        form.addActionRow(
+                actionButton("Calculate", this::calculateBinomial),
+                actionButton("Clear", this::clearCurrent),
+                infoButton("Info", """
+                        Eingaben:
+                        n = Anzahl unabhängiger Versuche, k = genaue Trefferzahl, lower/upper = Intervallgrenzen, p = Trefferwahrscheinlichkeit pro Versuch.
+
+                        Ergebnisse:
+                        Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), Erwartungswert E(X) und Varianz.
+
+                        Das Diagramm zeigt die Wahrscheinlichkeitsverteilung über alle Trefferzahlen; k wird hervorgehoben.
+                        """)
+        );
+    }
+
+    private void createPoissonInputs(FormPanel form) {
+        form.addSection("Input parameters");
+        lambdaField = form.addField("Rate lambda", "3.00");
+        successesField = form.addField("Exact count k", "2");
+        lowerField = form.addField("Lower bound", "0");
+        upperField = form.addField("Upper bound", "4");
+        form.addHint("Useful for counts in a fixed interval when events occur independently.");
+        form.addActionRow(
+                actionButton("Calculate", this::calculatePoisson),
+                actionButton("Clear", this::clearCurrent),
+                infoButton("Info", """
+                        Eingaben:
+                        lambda = erwartete Ereignisanzahl im Intervall, k = genaue Anzahl, lower/upper = Intervallgrenzen.
+
+                        Ergebnisse:
+                        Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), Erwartungswert und Varianz.
+
+                        Das Diagramm zeigt die Poisson-Wahrscheinlichkeiten für typische Zählwerte; k wird hervorgehoben.
+                        """)
+        );
+    }
+
+    private void createNormalInputs(FormPanel form) {
+        form.addSection("Input parameters");
+        meanField = form.addField("Mean mu", "0.00");
+        standardDeviationField = form.addField("Std. deviation sigma", "1.00");
+        lowerField = form.addField("Lower x", "-1.00");
+        upperField = form.addField("Upper x", "1.00");
+        form.addHint("Calculates Pr(X <= lower), Pr(lower <= X <= upper), and Pr(X > upper).");
+        form.addActionRow(
+                actionButton("Calculate", this::calculateNormal),
+                actionButton("Clear", this::clearCurrent),
+                infoButton("Info", """
+                        Eingaben:
+                        mu = Mittelwert, sigma = Standardabweichung, lower/upper = Grenzen auf der x-Achse.
+
+                        Ergebnisse:
+                        Pr(X <= lower), Pr(lower <= X <= upper), Pr(X > upper) und die Dichte am Mittelwert f(mu).
+
+                        Das Diagramm zeigt die Flächenanteile links, zwischen den Grenzen und rechts.
+                        """)
         );
     }
 
@@ -289,6 +405,13 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 JOptionPane.showMessageDialog(this, exception.getMessage(), "Eingabe prüfen", JOptionPane.WARNING_MESSAGE);
             }
         });
+        return button;
+    }
+
+    private JButton infoButton(String label, String message) {
+        JButton button = new JButton(label);
+        button.setBackground(new Color(232, 232, 232));
+        button.addActionListener(_event -> JOptionPane.showMessageDialog(this, message.strip(), "Info", JOptionPane.INFORMATION_MESSAGE));
         return button;
     }
 
@@ -394,6 +517,82 @@ public class ProbabilityCalculatorGUI extends JFrame {
         chartPanel.setSegments(segments, "Beiträge zu Pr(B) = Summe Pr(B|A_i) * Pr(A_i)");
     }
 
+    private void calculateBinomial() {
+        int n = readNonNegativeInt(trialsField, "n");
+        int k = readNonNegativeInt(successesField, "k");
+        int lower = readNonNegativeInt(lowerField, "lower");
+        int upper = readNonNegativeInt(upperField, "upper");
+        double p = readProbability(probabilityField, "p");
+        double exact = ProbabilityDistributions.binomialProbability(n, k, p);
+        double cumulative = ProbabilityDistributions.binomialCumulative(n, k, p);
+        double interval = ProbabilityDistributions.binomialInterval(n, lower, upper, p);
+        double expected = ProbabilityDistributions.expectedBinomial(n, p);
+        double variance = ProbabilityDistributions.varianceBinomial(n, p);
+
+        showResults(List.of(
+                new ResultLine("Pr(X = k)", exact),
+                new ResultLine("Pr(X <= k)", cumulative),
+                new ResultLine("Pr(lower <= X <= upper)", interval),
+                new ResultLine("E(X)", expected),
+                new ResultLine("Var(X)", variance)
+        ), "Binomialverteilung");
+
+        List<DataPoint> points = new ArrayList<>();
+        for (int i = 0; i <= n; i++) {
+            points.add(new DataPoint(String.valueOf(i), ProbabilityDistributions.binomialProbability(n, i, p), i == k ? GRAPH_RED : GRAPH_BLUE));
+        }
+        chartPanel.setDiscreteBars(points, "Binomialverteilung Pr(X = k)");
+    }
+
+    private void calculatePoisson() {
+        double lambda = readPositiveDouble(lambdaField, "lambda");
+        int k = readNonNegativeInt(successesField, "k");
+        int lower = readNonNegativeInt(lowerField, "lower");
+        int upper = readNonNegativeInt(upperField, "upper");
+        double exact = ProbabilityDistributions.poissonProbability(lambda, k);
+        double cumulative = ProbabilityDistributions.poissonCumulative(lambda, k);
+        double interval = ProbabilityDistributions.poissonInterval(lambda, lower, upper);
+
+        showResults(List.of(
+                new ResultLine("Pr(X = k)", exact),
+                new ResultLine("Pr(X <= k)", cumulative),
+                new ResultLine("Pr(lower <= X <= upper)", interval),
+                new ResultLine("E(X)", lambda),
+                new ResultLine("Var(X)", lambda)
+        ), "Poissonverteilung");
+
+        int max = Math.max(upper, Math.max(k, (int) Math.ceil(lambda + 4.0 * Math.sqrt(lambda))));
+        max = Math.min(max, 60);
+        List<DataPoint> points = new ArrayList<>();
+        for (int i = 0; i <= max; i++) {
+            points.add(new DataPoint(String.valueOf(i), ProbabilityDistributions.poissonProbability(lambda, i), i == k ? GRAPH_RED : GRAPH_GREEN));
+        }
+        chartPanel.setDiscreteBars(points, "Poissonverteilung Pr(X = k)");
+    }
+
+    private void calculateNormal() {
+        double mean = readDouble(meanField, "mu");
+        double standardDeviation = readPositiveDouble(standardDeviationField, "sigma");
+        double lower = readDouble(lowerField, "lower");
+        double upper = readDouble(upperField, "upper");
+        double left = ProbabilityDistributions.normalCumulative(mean, standardDeviation, lower);
+        double between = ProbabilityDistributions.normalInterval(mean, standardDeviation, lower, upper);
+        double right = 1.0 - ProbabilityDistributions.normalCumulative(mean, standardDeviation, upper);
+
+        showResults(List.of(
+                new ResultLine("Pr(X <= lower)", left),
+                new ResultLine("Pr(lower <= X <= upper)", between),
+                new ResultLine("Pr(X > upper)", right),
+                new ResultLine("f(mu)", ProbabilityDistributions.normalDensity(mean, standardDeviation, mean))
+        ), "Normalverteilung");
+
+        chartPanel.setSegments(List.of(
+                new Segment("Left tail", left, GRAPH_BLUE),
+                new Segment("Between", between, GRAPH_GREEN),
+                new Segment("Right tail", right, GRAPH_RED)
+        ), "Normalverteilung: Flächenanteile");
+    }
+
     private void clearCurrent() {
         output.setText("");
         chartPanel.clear("Noch keine Berechnung ausgeführt.");
@@ -445,6 +644,38 @@ public class ProbabilityCalculatorGUI extends JFrame {
         }
     }
 
+    private int readNonNegativeInt(JTextField field, String name) {
+        try {
+            int value = Integer.parseInt(field.getText().trim());
+            if (value < 0) {
+                throw new IllegalArgumentException(name + " darf nicht negativ sein.");
+            }
+            return value;
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(name + " muss eine ganze Zahl sein.");
+        }
+    }
+
+    private double readPositiveDouble(JTextField field, String name) {
+        double value = readDouble(field, name);
+        if (value <= 0.0) {
+            throw new IllegalArgumentException(name + " muss groesser als 0 sein.");
+        }
+        return value;
+    }
+
+    private double readDouble(JTextField field, String name) {
+        try {
+            double value = Double.parseDouble(field.getText().trim().replace(',', '.'));
+            if (!Double.isFinite(value)) {
+                throw new IllegalArgumentException(name + " muss endlich sein.");
+            }
+            return value;
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(name + " muss eine Zahl sein.");
+        }
+    }
+
     private String format(double value) {
         return "%.6f   %.2f%%".formatted(value, value * 100.0);
     }
@@ -453,7 +684,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
         COMPLEMENT("Exact: Complements", "two sided", "Komplemente"),
         JOINT("Exact: Joint probability", "two sided", "Schnitt & Oder"),
         CONDITIONAL("Exact: Conditional probability", "one sided", "Bedingt"),
-        BAYES("Bayes: Total probability", "posterior", "Bayes");
+        BAYES("Bayes: Total probability", "posterior", "Bayes"),
+        BINOMIAL("Distribution: Binomial", "lower / interval", "Binomial"),
+        POISSON("Distribution: Poisson", "lower / interval", "Poisson"),
+        NORMAL("Distribution: Normal", "tails / interval", "Normal");
 
         private final String displayName;
         private final String tailDescription;
@@ -478,6 +712,9 @@ public class ProbabilityCalculatorGUI extends JFrame {
     }
 
     private record BarGroup(String label, List<Segment> segments) {
+    }
+
+    private record DataPoint(String label, double value, Color color) {
     }
 
     private static final class FormPanel extends JPanel {
@@ -557,18 +794,17 @@ public class ProbabilityCalculatorGUI extends JFrame {
             constraints.gridwidth = 1;
         }
 
-        private void addActionRow(JButton primary, JButton secondary) {
+        private void addActionRow(JButton... buttons) {
             JPanel actions = new JPanel(new GridBagLayout());
             actions.setOpaque(false);
             GridBagConstraints actionConstraints = new GridBagConstraints();
-            actionConstraints.insets = new Insets(0, 0, 0, 6);
             actionConstraints.fill = GridBagConstraints.HORIZONTAL;
-            actionConstraints.gridx = 0;
             actionConstraints.weightx = 1.0;
-            actions.add(primary, actionConstraints);
-            actionConstraints.insets = new Insets(0, 6, 0, 0);
-            actionConstraints.gridx = 1;
-            actions.add(secondary, actionConstraints);
+            for (int i = 0; i < buttons.length; i++) {
+                actionConstraints.gridx = i;
+                actionConstraints.insets = new Insets(0, i == 0 ? 0 : 4, 0, i == buttons.length - 1 ? 0 : 4);
+                actions.add(buttons[i], actionConstraints);
+            }
 
             constraints.gridx = 0;
             constraints.gridy = row++;
@@ -593,13 +829,15 @@ public class ProbabilityCalculatorGUI extends JFrame {
         private enum Mode {
             EMPTY,
             SEGMENTS,
-            STACKED_BARS
+            STACKED_BARS,
+            DISCRETE_BARS
         }
 
         private Mode mode = Mode.EMPTY;
         private String title = "Noch keine Berechnung ausgeführt.";
         private List<Segment> segments = List.of();
         private List<BarGroup> barGroups = List.of();
+        private List<DataPoint> dataPoints = List.of();
 
         private ChartPanel() {
             setPreferredSize(new Dimension(540, 280));
@@ -612,6 +850,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
             title = message;
             segments = List.of();
             barGroups = List.of();
+            dataPoints = List.of();
             repaint();
         }
 
@@ -620,6 +859,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
             this.title = title;
             this.segments = segments;
             this.barGroups = List.of();
+            this.dataPoints = List.of();
             repaint();
         }
 
@@ -628,6 +868,16 @@ public class ProbabilityCalculatorGUI extends JFrame {
             this.title = title;
             this.barGroups = barGroups;
             this.segments = List.of();
+            this.dataPoints = List.of();
+            repaint();
+        }
+
+        private void setDiscreteBars(List<DataPoint> dataPoints, String title) {
+            this.mode = Mode.DISCRETE_BARS;
+            this.title = title;
+            this.dataPoints = dataPoints;
+            this.segments = List.of();
+            this.barGroups = List.of();
             repaint();
         }
 
@@ -644,8 +894,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
             } else if (mode == Mode.SEGMENTS) {
                 paintSegmentBar(g, segments, 62, getHeight() / 2 - 16, getWidth() - 124, 34);
                 paintLegend(g, segments, 62, getHeight() / 2 + 42);
-            } else {
+            } else if (mode == Mode.STACKED_BARS) {
                 paintStackedBars(g);
+            } else {
+                paintDiscreteBars(g);
             }
 
             g.dispose();
@@ -684,6 +936,51 @@ public class ProbabilityCalculatorGUI extends JFrame {
             }
             paintAxis(g, barX, y - 18, barWidth);
             paintLegend(g, legendSegments, 24, y + 18);
+        }
+
+        private void paintDiscreteBars(Graphics2D g) {
+            if (dataPoints.isEmpty()) {
+                paintEmpty(g);
+                return;
+            }
+
+            int chartX = 54;
+            int chartY = 58;
+            int chartWidth = getWidth() - 92;
+            int chartHeight = Math.max(90, getHeight() - 128);
+            double maxValue = dataPoints.stream().mapToDouble(DataPoint::value).max().orElse(1.0);
+            int gap = dataPoints.size() > 24 ? 1 : 3;
+            int barWidth = Math.max(2, (chartWidth - gap * (dataPoints.size() - 1)) / dataPoints.size());
+
+            g.setColor(new Color(225, 225, 225));
+            for (int i = 0; i <= 4; i++) {
+                int y = chartY + chartHeight - (chartHeight * i / 4);
+                g.drawLine(chartX, y, chartX + chartWidth, y);
+                g.setColor(new Color(90, 90, 90));
+                g.drawString("%.2f".formatted(maxValue * i / 4.0), 12, y + 4);
+                g.setColor(new Color(225, 225, 225));
+            }
+
+            for (int i = 0; i < dataPoints.size(); i++) {
+                DataPoint point = dataPoints.get(i);
+                int x = chartX + i * (barWidth + gap);
+                int height = (int) Math.round(chartHeight * (point.value() / maxValue));
+                int y = chartY + chartHeight - height;
+                g.setColor(point.color());
+                g.fillRect(x, y, barWidth, height);
+                g.setColor(new Color(80, 80, 80));
+                g.drawRect(x, y, barWidth, height);
+            }
+
+            g.setColor(new Color(60, 60, 60));
+            g.drawLine(chartX, chartY + chartHeight, chartX + chartWidth, chartY + chartHeight);
+            g.drawLine(chartX, chartY, chartX, chartY + chartHeight);
+            g.setFont(g.getFont().deriveFont(10f));
+            int labelStep = Math.max(1, dataPoints.size() / 12);
+            for (int i = 0; i < dataPoints.size(); i += labelStep) {
+                int x = chartX + i * (barWidth + gap);
+                g.drawString(dataPoints.get(i).label(), x, chartY + chartHeight + 16);
+            }
         }
 
         private void paintSegmentBar(Graphics2D g, List<Segment> values, int x, int y, int width, int height) {
