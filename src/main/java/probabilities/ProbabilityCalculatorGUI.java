@@ -3,8 +3,10 @@ package probabilities;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -17,6 +19,7 @@ import javax.swing.UIManager;
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GradientPaint;
@@ -43,10 +46,13 @@ public class ProbabilityCalculatorGUI extends JFrame {
     private static final Color GRAPH_YELLOW = new Color(213, 169, 70);
 
     private final JComboBox<AnalysisType> analysisSelector = new JComboBox<>(AnalysisType.values());
+    private final JComboBox<Language> languageSelector = new JComboBox<>(Language.values());
     private final JPanel inputHost = new JPanel(new BorderLayout());
     private final JTextArea output = new JTextArea(14, 38);
     private final ChartPanel chartPanel = new ChartPanel();
-    private final JLabel statusLabel = new JLabel("Bereit");
+    private final JLabel statusLabel = new JLabel();
+    private JPanel headerPanel;
+    private Language language = Language.DE;
 
     private JTextField probAField;
     private JTextField probBField;
@@ -71,13 +77,31 @@ public class ProbabilityCalculatorGUI extends JFrame {
         setLayout(new BorderLayout(8, 8));
         getContentPane().setBackground(WINDOW_BG);
 
-        add(createHeader(), BorderLayout.NORTH);
+        headerPanel = createHeader();
+        add(headerPanel, BorderLayout.NORTH);
         add(createMainContent(), BorderLayout.CENTER);
         add(createFooter(), BorderLayout.SOUTH);
+
+        analysisSelector.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof AnalysisType type) {
+                    setText(type.comboLabel(language));
+                }
+                return this;
+            }
+        });
 
         analysisSelector.addItemListener(event -> {
             if (event.getStateChange() == ItemEvent.SELECTED) {
                 rebuildInputPanel();
+            }
+        });
+        languageSelector.addItemListener(event -> {
+            if (event.getStateChange() == ItemEvent.SELECTED) {
+                language = (Language) event.getItem();
+                rebuildLanguage();
             }
         });
         rebuildInputPanel();
@@ -106,7 +130,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         gbc.insets = new Insets(2, 6, 2, 6);
         gbc.anchor = GridBagConstraints.WEST;
 
-        JLabel title = new JLabel("Wahrscheinlichkeitsrechner");
+        JLabel title = new JLabel(t("app.title"));
         title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
         gbc.gridx = 0;
         gbc.gridy = 0;
@@ -116,16 +140,16 @@ public class ProbabilityCalculatorGUI extends JFrame {
         gbc.gridwidth = 1;
         gbc.gridy = 1;
         gbc.gridx = 0;
-        header.add(new JLabel("Test family"), gbc);
+        header.add(new JLabel(t("header.family")), gbc);
 
         analysisSelector.setPreferredSize(new Dimension(270, 26));
         gbc.gridx = 1;
         header.add(analysisSelector, gbc);
 
         gbc.gridx = 2;
-        header.add(new JLabel("Input mode"), gbc);
+        header.add(new JLabel(t("header.inputMode")), gbc);
 
-        JLabel modeLabel = new JLabel("Probability values [0, 1]");
+        JLabel modeLabel = new JLabel(t("header.probabilityMode"));
         modeLabel.setBorder(BorderFactory.createLoweredBevelBorder());
         modeLabel.setOpaque(true);
         modeLabel.setBackground(Color.WHITE);
@@ -134,6 +158,14 @@ public class ProbabilityCalculatorGUI extends JFrame {
         header.add(modeLabel, gbc);
 
         gbc.gridx = 4;
+        header.add(new JLabel(t("header.language")), gbc);
+
+        languageSelector.setPreferredSize(new Dimension(110, 26));
+        languageSelector.setSelectedItem(language);
+        gbc.gridx = 5;
+        header.add(languageSelector, gbc);
+
+        gbc.gridx = 6;
         gbc.weightx = 1.0;
         header.add(new JLabel(), gbc);
 
@@ -175,12 +207,12 @@ public class ProbabilityCalculatorGUI extends JFrame {
 
         JPanel resultPanel = new JPanel(new BorderLayout());
         resultPanel.setBackground(PANEL_BG);
-        resultPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), "Output parameters"));
+        resultPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), t("panel.output")));
         resultPanel.add(new JScrollPane(output), BorderLayout.CENTER);
 
         JPanel graphPanel = new JPanel(new BorderLayout());
         graphPanel.setBackground(PANEL_BG);
-        graphPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), "Probability plot"));
+        graphPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), t("panel.plot")));
         graphPanel.add(chartPanel, BorderLayout.CENTER);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -212,21 +244,33 @@ public class ProbabilityCalculatorGUI extends JFrame {
         return footer;
     }
 
+    private void rebuildLanguage() {
+        setTitle(t("app.title"));
+        AnalysisType selectedType = (AnalysisType) analysisSelector.getSelectedItem();
+        remove(headerPanel);
+        headerPanel = createHeader();
+        add(headerPanel, BorderLayout.NORTH);
+        analysisSelector.setSelectedItem(selectedType);
+        rebuildInputPanel();
+        revalidate();
+        repaint();
+    }
+
     private void rebuildInputPanel() {
         inputHost.removeAll();
         inputHost.add(createInputPanel((AnalysisType) analysisSelector.getSelectedItem()), BorderLayout.CENTER);
         inputHost.revalidate();
         inputHost.repaint();
         output.setText("");
-        chartPanel.clear("Noch keine Berechnung ausgeführt.");
-        statusLabel.setText("Bereit");
+        chartPanel.clear(t("chart.empty"));
+        statusLabel.setText(t("status.ready"));
     }
 
     private JPanel createInputPanel(AnalysisType type) {
-        FormPanel form = new FormPanel();
-        form.addSection("Analysis");
-        form.addReadOnly("Selected procedure", type.displayName);
-        form.addReadOnly("Tail(s)", type.tailDescription);
+        FormPanel form = new FormPanel(t("panel.input"));
+        form.addSection(t("section.analysis"));
+        form.addReadOnly(t("field.selectedProcedure"), type.displayName(language));
+        form.addReadOnly(t("field.tails"), type.tailDescription(language));
         form.addSeparator();
 
         switch (type) {
@@ -244,152 +288,94 @@ public class ProbabilityCalculatorGUI extends JFrame {
     }
 
     private void createComplementInputs(FormPanel form) {
-        form.addSection("Input parameters");
+        form.addSection(t("section.input"));
         probAField = form.addField("Pr(A)", "0.30");
         probBField = form.addField("Pr(B)", "0.40");
         form.addActionRow(
-                actionButton("Calculate", this::calculateComplement),
-                actionButton("Clear", this::clearCurrent),
-                infoButton("Info", """
-                        Eingaben:
-                        Pr(A) und Pr(B) sind Wahrscheinlichkeiten zwischen 0 und 1.
-
-                        Ergebnisse:
-                        Pr(not A) = 1 - Pr(A)
-                        Pr(not B) = 1 - Pr(B)
-
-                        Das Diagramm zeigt jeweils Ereignis und Gegenereignis als Anteil am ganzen Ergebnisraum.
-                        """)
+                actionButton(t("button.calculate"), this::calculateComplement),
+                actionButton(t("button.clear"), this::clearCurrent),
+                infoButton(t("button.info"), t("info.complement"))
         );
     }
 
     private void createJointInputs(FormPanel form) {
-        form.addSection("Input parameters");
+        form.addSection(t("section.input"));
         probAField = form.addField("Pr(A)", "0.30");
         probBField = form.addField("Pr(B)", "0.40");
         intersectionField = form.addField("Pr(A and B)", "");
-        form.addHint("Leave Pr(A and B) empty to assume independence.");
+        form.addHint(t("hint.joint"));
         form.addActionRow(
-                actionButton("Calculate", this::calculateJoint),
-                actionButton("Clear", this::clearCurrent),
-                infoButton("Info", """
-                        Eingaben:
-                        Pr(A), Pr(B) und optional Pr(A and B). Wenn Pr(A and B) leer bleibt, wird Unabhängigkeit angenommen.
-
-                        Ergebnisse:
-                        Pr(A and B), Pr(A or B), Pr(A without B), Pr(B without A) und Pr(neither).
-
-                        Das Diagramm zerlegt den Ergebnisraum in A only, A and B, B only und Neither.
-                        """)
+                actionButton(t("button.calculate"), this::calculateJoint),
+                actionButton(t("button.clear"), this::clearCurrent),
+                infoButton(t("button.info"), t("info.joint"))
         );
     }
 
     private void createConditionalInputs(FormPanel form) {
-        form.addSection("Input parameters");
+        form.addSection(t("section.input"));
         intersectionField = form.addField("Pr(A and B)", "0.12");
         probAField = form.addField("Pr(A)", "0.30");
         probBField = form.addField("Pr(B)", "0.40");
         form.addActionRow(
-                actionButton("Calculate", this::calculateConditional),
-                actionButton("Clear", this::clearCurrent),
-                infoButton("Info", """
-                        Eingaben:
-                        Pr(A and B), Pr(A) und Pr(B). Die Schnittwahrscheinlichkeit darf nicht größer als Pr(A) oder Pr(B) sein.
-
-                        Ergebnisse:
-                        Pr(A|B) = Pr(A and B) / Pr(B)
-                        Pr(B|A) = Pr(A and B) / Pr(A)
-
-                        Das Diagramm zeigt die bedingten Anteile im jeweiligen eingeschränkten Grundraum.
-                        """)
+                actionButton(t("button.calculate"), this::calculateConditional),
+                actionButton(t("button.clear"), this::clearCurrent),
+                infoButton(t("button.info"), t("info.conditional"))
         );
     }
 
     private void createBayesInputs(FormPanel form) {
-        form.addSection("Input parameters");
+        form.addSection(t("section.input"));
         likelihoodsField = form.addField("Pr(B|A_i)", "0.90; 0.20");
         priorsField = form.addField("Pr(A_i)", "0.30; 0.70");
-        selectedIndexField = form.addField("Requested A_i", "1");
-        form.addHint("Separate list values with semicolon or space. Pr(A_i) must sum to 1.");
+        selectedIndexField = form.addField(t("field.requestedAi"), "1");
+        form.addHint(t("hint.bayes"));
         form.addActionRow(
-                actionButton("Calculate", this::calculateBayes),
-                actionButton("Clear", this::clearCurrent),
-                infoButton("Info", """
-                        Eingaben:
-                        Liste Pr(B|A_i), Liste Pr(A_i) und der Index des gesuchten A_i. Beide Listen müssen gleich lang sein; Pr(A_i) muss zusammen 1 ergeben.
-
-                        Ergebnisse:
-                        Pr(B) nach dem Satz der totalen Wahrscheinlichkeit, Pr(A_i|B) nach Bayes und die Einzelbeiträge Pr(B|A_i) * Pr(A_i).
-
-                        Das Diagramm zeigt, welche A_i wie stark zu Pr(B) beitragen.
-                        """)
+                actionButton(t("button.calculate"), this::calculateBayes),
+                actionButton(t("button.clear"), this::clearCurrent),
+                infoButton(t("button.info"), t("info.bayes"))
         );
     }
 
     private void createBinomialInputs(FormPanel form) {
-        form.addSection("Input parameters");
-        trialsField = form.addField("Number of trials n", "10");
-        successesField = form.addField("Exact successes k", "3");
-        lowerField = form.addField("Lower bound", "0");
-        upperField = form.addField("Upper bound", "3");
-        probabilityField = form.addField("Success probability p", "0.50");
-        form.addHint("Calculates Pr(X = k), Pr(X <= k) and Pr(lower <= X <= upper).");
+        form.addSection(t("section.input"));
+        trialsField = form.addField(t("field.trials"), "10");
+        successesField = form.addField(t("field.successes"), "3");
+        lowerField = form.addField(t("field.lower"), "0");
+        upperField = form.addField(t("field.upper"), "3");
+        probabilityField = form.addField(t("field.successProbability"), "0.50");
+        form.addHint(t("hint.binomial"));
         form.addActionRow(
-                actionButton("Calculate", this::calculateBinomial),
-                actionButton("Clear", this::clearCurrent),
-                infoButton("Info", """
-                        Eingaben:
-                        n = Anzahl unabhängiger Versuche, k = genaue Trefferzahl, lower/upper = Intervallgrenzen, p = Trefferwahrscheinlichkeit pro Versuch.
-
-                        Ergebnisse:
-                        Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), Erwartungswert E(X) und Varianz.
-
-                        Das Diagramm zeigt die Wahrscheinlichkeitsverteilung über alle Trefferzahlen; k wird hervorgehoben.
-                        """)
+                actionButton(t("button.calculate"), this::calculateBinomial),
+                actionButton(t("button.clear"), this::clearCurrent),
+                infoButton(t("button.info"), t("info.binomial"))
         );
     }
 
     private void createPoissonInputs(FormPanel form) {
-        form.addSection("Input parameters");
-        lambdaField = form.addField("Rate lambda", "3.00");
-        successesField = form.addField("Exact count k", "2");
-        lowerField = form.addField("Lower bound", "0");
-        upperField = form.addField("Upper bound", "4");
-        form.addHint("Useful for counts in a fixed interval when events occur independently.");
+        form.addSection(t("section.input"));
+        lambdaField = form.addField(t("field.lambda"), "3.00");
+        successesField = form.addField(t("field.count"), "2");
+        lowerField = form.addField(t("field.lower"), "0");
+        upperField = form.addField(t("field.upper"), "4");
+        form.addHint(t("hint.poisson"));
         form.addActionRow(
-                actionButton("Calculate", this::calculatePoisson),
-                actionButton("Clear", this::clearCurrent),
-                infoButton("Info", """
-                        Eingaben:
-                        lambda = erwartete Ereignisanzahl im Intervall, k = genaue Anzahl, lower/upper = Intervallgrenzen.
-
-                        Ergebnisse:
-                        Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), Erwartungswert und Varianz.
-
-                        Das Diagramm zeigt die Poisson-Wahrscheinlichkeiten für typische Zählwerte; k wird hervorgehoben.
-                        """)
+                actionButton(t("button.calculate"), this::calculatePoisson),
+                actionButton(t("button.clear"), this::clearCurrent),
+                infoButton(t("button.info"), t("info.poisson"))
         );
     }
 
     private void createNormalInputs(FormPanel form) {
-        form.addSection("Input parameters");
-        meanField = form.addField("Mean mu", "0.00");
-        standardDeviationField = form.addField("Std. deviation sigma", "1.00");
-        lowerField = form.addField("Lower x", "-1.00");
-        upperField = form.addField("Upper x", "1.00");
-        form.addHint("Calculates Pr(X <= lower), Pr(lower <= X <= upper), and Pr(X > upper).");
+        form.addSection(t("section.input"));
+        meanField = form.addField(t("field.mean"), "0.00");
+        standardDeviationField = form.addField(t("field.stddev"), "1.00");
+        lowerField = form.addField(t("field.lowerX"), "-1.00");
+        upperField = form.addField(t("field.upperX"), "1.00");
+        form.addHint(t("hint.normal"));
         form.addActionRow(
-                actionButton("Calculate", this::calculateNormal),
-                actionButton("Clear", this::clearCurrent),
-                infoButton("Info", """
-                        Eingaben:
-                        mu = Mittelwert, sigma = Standardabweichung, lower/upper = Grenzen auf der x-Achse.
-
-                        Ergebnisse:
-                        Pr(X <= lower), Pr(lower <= X <= upper), Pr(X > upper) und die Dichte am Mittelwert f(mu).
-
-                        Das Diagramm zeigt die Flächenanteile links, zwischen den Grenzen und rechts.
-                        """)
+                actionButton(t("button.calculate"), this::calculateNormal),
+                actionButton(t("button.clear"), this::clearCurrent),
+                infoButton(t("button.info"), t("info.normal"))
         );
     }
 
@@ -399,10 +385,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
         button.addActionListener(_event -> {
             try {
                 action.run();
-                statusLabel.setText("Berechnung erfolgreich");
+                statusLabel.setText(t("status.success"));
             } catch (IllegalArgumentException exception) {
-                statusLabel.setText("Eingabe prüfen");
-                JOptionPane.showMessageDialog(this, exception.getMessage(), "Eingabe prüfen", JOptionPane.WARNING_MESSAGE);
+                statusLabel.setText(t("status.checkInput"));
+                JOptionPane.showMessageDialog(this, exception.getMessage(), t("dialog.checkInput"), JOptionPane.WARNING_MESSAGE);
             }
         });
         return button;
@@ -411,7 +397,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
     private JButton infoButton(String label, String message) {
         JButton button = new JButton(label);
         button.setBackground(new Color(232, 232, 232));
-        button.addActionListener(_event -> JOptionPane.showMessageDialog(this, message.strip(), "Info", JOptionPane.INFORMATION_MESSAGE));
+        button.addActionListener(_event -> JOptionPane.showMessageDialog(this, message.strip(), t("button.info"), JOptionPane.INFORMATION_MESSAGE));
         return button;
     }
 
@@ -426,7 +412,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 new ResultLine("Pr(not A)", notA),
                 new ResultLine("Pr(B)", b),
                 new ResultLine("Pr(not B)", notB)
-        ), "Komplementwahrscheinlichkeiten");
+        ), t("heading.complement"));
 
         chartPanel.setStackedBars(List.of(
                 new BarGroup("A", List.of(
@@ -437,7 +423,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
                         new Segment("Pr(B)", b, GRAPH_GREEN),
                         new Segment("Pr(not B)", notB, GRAPH_YELLOW)
                 ))
-        ), "Komplement-Zerlegung");
+        ), t("chart.complement"));
     }
 
     private void calculateJoint() {
@@ -454,19 +440,19 @@ public class ProbabilityCalculatorGUI extends JFrame {
         showResults(List.of(
                 new ResultLine("Pr(A and B)", intersection),
                 new ResultLine("Pr(A or B)", JointProbs.getProbAOrB(a, b, intersection)),
-                new ResultLine("Pr(A without B)", aOnly),
-                new ResultLine("Pr(B without A)", bOnly),
+                new ResultLine(t("result.aWithoutB"), aOnly),
+                new ResultLine(t("result.bWithoutA"), bOnly),
                 new ResultLine("Pr(neither)", neither)
         ), intersectionField.getText().isBlank()
-                ? "Schnitt und Vereinigung (Unabhängigkeit angenommen)"
-                : "Schnitt und Vereinigung");
+                ? t("heading.jointIndependent")
+                : t("heading.joint"));
 
         chartPanel.setSegments(List.of(
-                new Segment("A only", aOnly, GRAPH_BLUE),
+                new Segment(t("segment.aOnly"), aOnly, GRAPH_BLUE),
                 new Segment("A and B", intersection, GRAPH_GREEN),
-                new Segment("B only", bOnly, GRAPH_RED),
+                new Segment(t("segment.bOnly"), bOnly, GRAPH_RED),
                 new Segment("Neither", neither, new Color(165, 165, 165))
-        ), "Vierfelder-Zerlegung des Ergebnisraums");
+        ), t("chart.joint"));
     }
 
     private void calculateConditional() {
@@ -480,7 +466,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 new ResultLine("Pr(A|B)", aGivenB),
                 new ResultLine("Pr(B|A)", bGivenA),
                 new ResultLine("Pr(A and B)", intersection)
-        ), "Bedingte Wahrscheinlichkeiten");
+        ), t("heading.conditional"));
 
         chartPanel.setStackedBars(List.of(
                 new BarGroup("Given B", List.of(
@@ -491,7 +477,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
                         new Segment("Pr(B|A)", bGivenA, GRAPH_GREEN),
                         new Segment("Pr(not B|A)", 1.0 - bGivenA, GRAPH_YELLOW)
                 ))
-        ), "Bedingte Anteile im jeweiligen Grundraum");
+        ), t("chart.conditional"));
     }
 
     private void calculateBayes() {
@@ -505,16 +491,16 @@ public class ProbabilityCalculatorGUI extends JFrame {
         lines.add(new ResultLine("Pr(B)", total));
         lines.add(new ResultLine("Pr(A" + (index + 1) + "|B)", posterior));
         for (int i = 0; i < likelihoods.size(); i++) {
-            lines.add(new ResultLine("Contribution A" + (i + 1), likelihoods.get(i) * priors.get(i)));
+            lines.add(new ResultLine(t("result.contribution") + " A" + (i + 1), likelihoods.get(i) * priors.get(i)));
         }
-        showResults(lines, "Bayes und totale Wahrscheinlichkeit");
+        showResults(lines, t("heading.bayes"));
 
         List<Segment> segments = new ArrayList<>();
         Color[] colors = {GRAPH_BLUE, GRAPH_RED, GRAPH_GREEN, GRAPH_YELLOW, new Color(129, 102, 168), new Color(92, 145, 160)};
         for (int i = 0; i < likelihoods.size(); i++) {
             segments.add(new Segment("A" + (i + 1), likelihoods.get(i) * priors.get(i), colors[i % colors.length]));
         }
-        chartPanel.setSegments(segments, "Beiträge zu Pr(B) = Summe Pr(B|A_i) * Pr(A_i)");
+        chartPanel.setSegments(segments, t("chart.bayes"));
     }
 
     private void calculateBinomial() {
@@ -535,13 +521,13 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 new ResultLine("Pr(lower <= X <= upper)", interval),
                 new ResultLine("E(X)", expected),
                 new ResultLine("Var(X)", variance)
-        ), "Binomialverteilung");
+        ), t("heading.binomial"));
 
         List<DataPoint> points = new ArrayList<>();
         for (int i = 0; i <= n; i++) {
             points.add(new DataPoint(String.valueOf(i), ProbabilityDistributions.binomialProbability(n, i, p), i == k ? GRAPH_RED : GRAPH_BLUE));
         }
-        chartPanel.setDiscreteBars(points, "Binomialverteilung Pr(X = k)");
+        chartPanel.setDiscreteBars(points, t("chart.binomial"));
     }
 
     private void calculatePoisson() {
@@ -559,7 +545,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 new ResultLine("Pr(lower <= X <= upper)", interval),
                 new ResultLine("E(X)", lambda),
                 new ResultLine("Var(X)", lambda)
-        ), "Poissonverteilung");
+        ), t("heading.poisson"));
 
         int max = Math.max(upper, Math.max(k, (int) Math.ceil(lambda + 4.0 * Math.sqrt(lambda))));
         max = Math.min(max, 60);
@@ -567,7 +553,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         for (int i = 0; i <= max; i++) {
             points.add(new DataPoint(String.valueOf(i), ProbabilityDistributions.poissonProbability(lambda, i), i == k ? GRAPH_RED : GRAPH_GREEN));
         }
-        chartPanel.setDiscreteBars(points, "Poissonverteilung Pr(X = k)");
+        chartPanel.setDiscreteBars(points, t("chart.poisson"));
     }
 
     private void calculateNormal() {
@@ -584,19 +570,19 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 new ResultLine("Pr(lower <= X <= upper)", between),
                 new ResultLine("Pr(X > upper)", right),
                 new ResultLine("f(mu)", ProbabilityDistributions.normalDensity(mean, standardDeviation, mean))
-        ), "Normalverteilung");
+        ), t("heading.normal"));
 
         chartPanel.setSegments(List.of(
-                new Segment("Left tail", left, GRAPH_BLUE),
-                new Segment("Between", between, GRAPH_GREEN),
-                new Segment("Right tail", right, GRAPH_RED)
-        ), "Normalverteilung: Flächenanteile");
+                new Segment(t("segment.leftTail"), left, GRAPH_BLUE),
+                new Segment(t("segment.between"), between, GRAPH_GREEN),
+                new Segment(t("segment.rightTail"), right, GRAPH_RED)
+        ), t("chart.normal"));
     }
 
     private void clearCurrent() {
         output.setText("");
-        chartPanel.clear("Noch keine Berechnung ausgeführt.");
-        statusLabel.setText("Bereit");
+        chartPanel.clear(t("chart.empty"));
+        statusLabel.setText(t("status.ready"));
     }
 
     private void showResults(List<ResultLine> lines, String heading) {
@@ -680,28 +666,252 @@ public class ProbabilityCalculatorGUI extends JFrame {
         return "%.6f   %.2f%%".formatted(value, value * 100.0);
     }
 
-    private enum AnalysisType {
-        COMPLEMENT("Exact: Complements", "two sided", "Komplemente"),
-        JOINT("Exact: Joint probability", "two sided", "Schnitt & Oder"),
-        CONDITIONAL("Exact: Conditional probability", "one sided", "Bedingt"),
-        BAYES("Bayes: Total probability", "posterior", "Bayes"),
-        BINOMIAL("Distribution: Binomial", "lower / interval", "Binomial"),
-        POISSON("Distribution: Poisson", "lower / interval", "Poisson"),
-        NORMAL("Distribution: Normal", "tails / interval", "Normal");
+    private String t(String key) {
+        boolean de = language == Language.DE;
+        return switch (key) {
+            case "app.title" -> de ? "Wahrscheinlichkeitsrechner" : "Probability Calculator";
+            case "header.family" -> de ? "Testfamilie" : "Test family";
+            case "header.inputMode" -> de ? "Eingabemodus" : "Input mode";
+            case "header.probabilityMode" -> de ? "Wahrscheinlichkeitswerte [0, 1]" : "Probability values [0, 1]";
+            case "header.language" -> de ? "Sprache" : "Language";
+            case "panel.input" -> de ? "Eingabeparameter" : "Input parameters";
+            case "panel.output" -> de ? "Ausgabeparameter" : "Output parameters";
+            case "panel.plot" -> de ? "Wahrscheinlichkeitsdiagramm" : "Probability plot";
+            case "section.analysis" -> de ? "Analyse" : "Analysis";
+            case "section.input" -> de ? "Eingabeparameter" : "Input parameters";
+            case "field.selectedProcedure" -> de ? "Gewähltes Verfahren" : "Selected procedure";
+            case "field.tails" -> de ? "Bereich" : "Tail(s)";
+            case "field.requestedAi" -> de ? "Gesuchtes A_i" : "Requested A_i";
+            case "field.trials" -> de ? "Anzahl Versuche n" : "Number of trials n";
+            case "field.successes" -> de ? "Genaue Treffer k" : "Exact successes k";
+            case "field.lower" -> de ? "Untere Grenze" : "Lower bound";
+            case "field.upper" -> de ? "Obere Grenze" : "Upper bound";
+            case "field.successProbability" -> de ? "Trefferwahrscheinlichkeit p" : "Success probability p";
+            case "field.lambda" -> de ? "Rate lambda" : "Rate lambda";
+            case "field.count" -> de ? "Genaue Anzahl k" : "Exact count k";
+            case "field.mean" -> de ? "Mittelwert mu" : "Mean mu";
+            case "field.stddev" -> de ? "Standardabweichung sigma" : "Std. deviation sigma";
+            case "field.lowerX" -> de ? "Untere x-Grenze" : "Lower x";
+            case "field.upperX" -> de ? "Obere x-Grenze" : "Upper x";
+            case "button.calculate" -> de ? "Berechnen" : "Calculate";
+            case "button.clear" -> de ? "Leeren" : "Clear";
+            case "button.info" -> "Info";
+            case "status.ready" -> de ? "Bereit" : "Ready";
+            case "status.success" -> de ? "Berechnung erfolgreich" : "Calculation successful";
+            case "status.checkInput" -> de ? "Eingabe prüfen" : "Check input";
+            case "dialog.checkInput" -> de ? "Eingabe prüfen" : "Check input";
+            case "chart.empty" -> de ? "Diagramme erscheinen nach der Berechnung." : "Charts appear after calculation.";
+            case "hint.joint" -> de ? "Pr(A and B) leer lassen, um Unabhängigkeit anzunehmen." : "Leave Pr(A and B) empty to assume independence.";
+            case "hint.bayes" -> de ? "Listenwerte mit Semikolon oder Leerzeichen trennen. Pr(A_i) muss zusammen 1 ergeben." : "Separate list values with semicolon or space. Pr(A_i) must sum to 1.";
+            case "hint.binomial" -> de ? "Berechnet Pr(X = k), Pr(X <= k) und Pr(lower <= X <= upper)." : "Calculates Pr(X = k), Pr(X <= k), and Pr(lower <= X <= upper).";
+            case "hint.poisson" -> de ? "Geeignet für Zählwerte in einem festen Intervall bei unabhängigen Ereignissen." : "Useful for counts in a fixed interval when events occur independently.";
+            case "hint.normal" -> de ? "Berechnet Pr(X <= lower), Pr(lower <= X <= upper) und Pr(X > upper)." : "Calculates Pr(X <= lower), Pr(lower <= X <= upper), and Pr(X > upper).";
+            case "heading.complement" -> de ? "Komplementwahrscheinlichkeiten" : "Complement probabilities";
+            case "heading.joint" -> de ? "Schnitt und Vereinigung" : "Intersection and union";
+            case "heading.jointIndependent" -> de ? "Schnitt und Vereinigung (Unabhängigkeit angenommen)" : "Intersection and union (independence assumed)";
+            case "heading.conditional" -> de ? "Bedingte Wahrscheinlichkeiten" : "Conditional probabilities";
+            case "heading.bayes" -> de ? "Bayes und totale Wahrscheinlichkeit" : "Bayes and total probability";
+            case "heading.binomial" -> de ? "Binomialverteilung" : "Binomial distribution";
+            case "heading.poisson" -> de ? "Poissonverteilung" : "Poisson distribution";
+            case "heading.normal" -> de ? "Normalverteilung" : "Normal distribution";
+            case "chart.complement" -> de ? "Komplement-Zerlegung" : "Complement decomposition";
+            case "chart.joint" -> de ? "Vierfelder-Zerlegung des Ergebnisraums" : "Four-part decomposition of the sample space";
+            case "chart.conditional" -> de ? "Bedingte Anteile im jeweiligen Grundraum" : "Conditional proportions in each reference space";
+            case "chart.bayes" -> de ? "Beiträge zu Pr(B) = Summe Pr(B|A_i) * Pr(A_i)" : "Contributions to Pr(B) = sum Pr(B|A_i) * Pr(A_i)";
+            case "chart.binomial" -> de ? "Binomialverteilung Pr(X = k)" : "Binomial distribution Pr(X = k)";
+            case "chart.poisson" -> de ? "Poissonverteilung Pr(X = k)" : "Poisson distribution Pr(X = k)";
+            case "chart.normal" -> de ? "Normalverteilung: Flächenanteile" : "Normal distribution: area proportions";
+            case "result.aWithoutB" -> de ? "Pr(A ohne B)" : "Pr(A without B)";
+            case "result.bWithoutA" -> de ? "Pr(B ohne A)" : "Pr(B without A)";
+            case "result.contribution" -> de ? "Beitrag" : "Contribution";
+            case "segment.aOnly" -> de ? "Nur A" : "A only";
+            case "segment.bOnly" -> de ? "Nur B" : "B only";
+            case "segment.leftTail" -> de ? "Linke Fläche" : "Left tail";
+            case "segment.between" -> de ? "Zwischenbereich" : "Between";
+            case "segment.rightTail" -> de ? "Rechte Fläche" : "Right tail";
+            case "info.complement" -> de ? """
+                    Eingaben:
+                    Pr(A) und Pr(B) sind Wahrscheinlichkeiten zwischen 0 und 1.
 
-        private final String displayName;
-        private final String tailDescription;
-        private final String comboLabel;
+                    Ergebnisse:
+                    Pr(not A) = 1 - Pr(A)
+                    Pr(not B) = 1 - Pr(B)
 
-        AnalysisType(String displayName, String tailDescription, String comboLabel) {
-            this.displayName = displayName;
-            this.tailDescription = tailDescription;
-            this.comboLabel = comboLabel;
+                    Das Diagramm zeigt jeweils Ereignis und Gegenereignis als Anteil am ganzen Ergebnisraum.
+                    """ : """
+                    Inputs:
+                    Pr(A) and Pr(B) are probabilities between 0 and 1.
+
+                    Results:
+                    Pr(not A) = 1 - Pr(A)
+                    Pr(not B) = 1 - Pr(B)
+
+                    The chart shows each event and its complement as parts of the whole sample space.
+                    """;
+            case "info.joint" -> de ? """
+                    Eingaben:
+                    Pr(A), Pr(B) und optional Pr(A and B). Wenn Pr(A and B) leer bleibt, wird Unabhängigkeit angenommen.
+
+                    Ergebnisse:
+                    Pr(A and B), Pr(A or B), Pr(A without B), Pr(B without A) und Pr(neither).
+
+                    Das Diagramm zerlegt den Ergebnisraum in A only, A and B, B only und Neither.
+                    """ : """
+                    Inputs:
+                    Pr(A), Pr(B), and optionally Pr(A and B). If Pr(A and B) is empty, independence is assumed.
+
+                    Results:
+                    Pr(A and B), Pr(A or B), Pr(A without B), Pr(B without A), and Pr(neither).
+
+                    The chart decomposes the sample space into A only, A and B, B only, and Neither.
+                    """;
+            case "info.conditional" -> de ? """
+                    Eingaben:
+                    Pr(A and B), Pr(A) und Pr(B). Die Schnittwahrscheinlichkeit darf nicht größer als Pr(A) oder Pr(B) sein.
+
+                    Ergebnisse:
+                    Pr(A|B) = Pr(A and B) / Pr(B)
+                    Pr(B|A) = Pr(A and B) / Pr(A)
+
+                    Das Diagramm zeigt die bedingten Anteile im jeweiligen eingeschränkten Grundraum.
+                    """ : """
+                    Inputs:
+                    Pr(A and B), Pr(A), and Pr(B). The intersection must not be greater than Pr(A) or Pr(B).
+
+                    Results:
+                    Pr(A|B) = Pr(A and B) / Pr(B)
+                    Pr(B|A) = Pr(A and B) / Pr(A)
+
+                    The chart shows conditional proportions in the respective restricted sample space.
+                    """;
+            case "info.bayes" -> de ? """
+                    Eingaben:
+                    Liste Pr(B|A_i), Liste Pr(A_i) und der Index des gesuchten A_i. Beide Listen müssen gleich lang sein; Pr(A_i) muss zusammen 1 ergeben.
+
+                    Ergebnisse:
+                    Pr(B) nach dem Satz der totalen Wahrscheinlichkeit, Pr(A_i|B) nach Bayes und die Einzelbeiträge Pr(B|A_i) * Pr(A_i).
+
+                    Das Diagramm zeigt, welche A_i wie stark zu Pr(B) beitragen.
+                    """ : """
+                    Inputs:
+                    List of Pr(B|A_i), list of Pr(A_i), and the index of the requested A_i. Lists must have equal length; Pr(A_i) must sum to 1.
+
+                    Results:
+                    Pr(B) from total probability, Pr(A_i|B) from Bayes, and the contributions Pr(B|A_i) * Pr(A_i).
+
+                    The chart shows how strongly each A_i contributes to Pr(B).
+                    """;
+            case "info.binomial" -> de ? """
+                    Eingaben:
+                    n = Anzahl unabhängiger Versuche, k = genaue Trefferzahl, lower/upper = Intervallgrenzen, p = Trefferwahrscheinlichkeit pro Versuch.
+
+                    Ergebnisse:
+                    Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), Erwartungswert E(X) und Varianz.
+
+                    Das Diagramm zeigt die Wahrscheinlichkeitsverteilung über alle Trefferzahlen; k wird hervorgehoben.
+                    """ : """
+                    Inputs:
+                    n = number of independent trials, k = exact number of successes, lower/upper = interval bounds, p = success probability per trial.
+
+                    Results:
+                    Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), expected value E(X), and variance.
+
+                    The chart shows the probability distribution over all success counts; k is highlighted.
+                    """;
+            case "info.poisson" -> de ? """
+                    Eingaben:
+                    lambda = erwartete Ereignisanzahl im Intervall, k = genaue Anzahl, lower/upper = Intervallgrenzen.
+
+                    Ergebnisse:
+                    Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), Erwartungswert und Varianz.
+
+                    Das Diagramm zeigt die Poisson-Wahrscheinlichkeiten für typische Zählwerte; k wird hervorgehoben.
+                    """ : """
+                    Inputs:
+                    lambda = expected event count in the interval, k = exact count, lower/upper = interval bounds.
+
+                    Results:
+                    Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), expected value, and variance.
+
+                    The chart shows Poisson probabilities for typical count values; k is highlighted.
+                    """;
+            case "info.normal" -> de ? """
+                    Eingaben:
+                    mu = Mittelwert, sigma = Standardabweichung, lower/upper = Grenzen auf der x-Achse.
+
+                    Ergebnisse:
+                    Pr(X <= lower), Pr(lower <= X <= upper), Pr(X > upper) und die Dichte am Mittelwert f(mu).
+
+                    Das Diagramm zeigt die Flächenanteile links, zwischen den Grenzen und rechts.
+                    """ : """
+                    Inputs:
+                    mu = mean, sigma = standard deviation, lower/upper = x-axis bounds.
+
+                    Results:
+                    Pr(X <= lower), Pr(lower <= X <= upper), Pr(X > upper), and density at the mean f(mu).
+
+                    The chart shows the left, middle, and right area proportions.
+                    """;
+            default -> key;
+        };
+    }
+
+    private enum Language {
+        DE("Deutsch"),
+        EN("English");
+
+        private final String label;
+
+        Language(String label) {
+            this.label = label;
         }
 
         @Override
         public String toString() {
-            return comboLabel;
+            return label;
+        }
+    }
+
+    private enum AnalysisType {
+        COMPLEMENT("Exact: Complements", "Exakt: Komplemente", "two sided", "zweiseitig", "Complements", "Komplemente"),
+        JOINT("Exact: Joint probability", "Exakt: Schnittwahrscheinlichkeit", "two sided", "zweiseitig", "Joint & union", "Schnitt & Oder"),
+        CONDITIONAL("Exact: Conditional probability", "Exakt: Bedingte Wahrscheinlichkeit", "one sided", "einseitig", "Conditional", "Bedingt"),
+        BAYES("Bayes: Total probability", "Bayes: Totale Wahrscheinlichkeit", "posterior", "posterior", "Bayes", "Bayes"),
+        BINOMIAL("Distribution: Binomial", "Verteilung: Binomial", "lower / interval", "untere Grenze / Intervall", "Binomial", "Binomial"),
+        POISSON("Distribution: Poisson", "Verteilung: Poisson", "lower / interval", "untere Grenze / Intervall", "Poisson", "Poisson"),
+        NORMAL("Distribution: Normal", "Verteilung: Normal", "tails / interval", "Ränder / Intervall", "Normal", "Normal");
+
+        private final String displayNameEn;
+        private final String displayNameDe;
+        private final String tailDescriptionEn;
+        private final String tailDescriptionDe;
+        private final String comboLabelEn;
+        private final String comboLabelDe;
+
+        AnalysisType(String displayNameEn, String displayNameDe, String tailDescriptionEn, String tailDescriptionDe, String comboLabelEn, String comboLabelDe) {
+            this.displayNameEn = displayNameEn;
+            this.displayNameDe = displayNameDe;
+            this.tailDescriptionEn = tailDescriptionEn;
+            this.tailDescriptionDe = tailDescriptionDe;
+            this.comboLabelEn = comboLabelEn;
+            this.comboLabelDe = comboLabelDe;
+        }
+
+        private String displayName(Language language) {
+            return language == Language.DE ? displayNameDe : displayNameEn;
+        }
+
+        private String tailDescription(Language language) {
+            return language == Language.DE ? tailDescriptionDe : tailDescriptionEn;
+        }
+
+        private String comboLabel(Language language) {
+            return language == Language.DE ? comboLabelDe : comboLabelEn;
+        }
+
+        @Override
+        public String toString() {
+            return comboLabelDe;
         }
     }
 
@@ -721,10 +931,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
         private final GridBagConstraints constraints = new GridBagConstraints();
         private int row = 0;
 
-        private FormPanel() {
+        private FormPanel(String title) {
             super(new GridBagLayout());
             setBackground(PANEL_BG);
-            setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), "Input parameters"));
+            setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), title));
             constraints.insets = new Insets(4, 8, 4, 8);
             constraints.fill = GridBagConstraints.HORIZONTAL;
         }
