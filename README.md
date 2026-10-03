@@ -1,17 +1,32 @@
-# Wahrscheinlichkeitsrechner
+# Probability Calculator / Wahrscheinlichkeitsrechner
 
-Ein Java/Swing-Desktoptool fuer grundlegende Wahrscheinlichkeitsrechnung im Stil kompakter Statistikprogramme. Die App bietet Eingabefelder, Ergebniswerte, Info-Dialoge und Diagramme fuer die wichtigsten Berechnungsarten.
+**English:** A Java/Swing desktop tool for basic probability calculations with compact statistical-software-style input panels, result output, info dialogs, charts, and German/English language switching.
+
+**Deutsch:** Ein Java/Swing-Desktoptool fuer grundlegende Wahrscheinlichkeitsrechnung im Stil kompakter Statistikprogramme. Die App bietet Eingabefelder, Ergebniswerte, Info-Dialoge, Diagramme und eine Sprachumschaltung zwischen Deutsch und Englisch.
 
 ## Download
 
-Die aktuelle Version steht im GitHub-Release bereit:
+Die aktuelle Version / latest version steht im GitHub-Release bereit:
 
 https://github.com/manuelk2607/Wahrscheinlichkeitsrechner/releases
 
-- `Wahrscheinlichkeitsrechner-1.0.0.dmg`: macOS-App mit gebuendelter Java-Runtime.
-- `Wahrscheinlichkeitsrechner-1.0.0-jar.zip`: kleine JAR-Version fuer Systeme mit installiertem Java.
+- `Wahrscheinlichkeitsrechner-1.1.0.dmg`: macOS-App mit gebuendelter Java-Runtime.
+- `Wahrscheinlichkeitsrechner-1.1.0-jar.zip`: kleine JAR-Version fuer Systeme mit installiertem Java.
 
-## Funktionen
+## Features / Funktionen
+
+English:
+
+- Complements: `Pr(not A)`, `Pr(not B)`
+- Joint and union probabilities: `Pr(A and B)`, `Pr(A or B)`, exclusive parts
+- Conditional probabilities: `Pr(A|B)`, `Pr(B|A)`
+- Bayes and total probability
+- Binomial, Poisson, and normal distributions
+- Charts for complements, four-part decompositions, conditional proportions, Bayes contributions, and distributions
+- Info buttons for every calculation type
+- German/English language switch
+
+Deutsch:
 
 - Komplementwahrscheinlichkeiten: `Pr(not A)`, `Pr(not B)`
 - Schnittmengen und Vereinigungen: `Pr(A and B)`, `Pr(A or B)`, exklusive Anteile
