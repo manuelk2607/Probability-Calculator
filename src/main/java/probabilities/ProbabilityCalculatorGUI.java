@@ -184,7 +184,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         gbc.gridy = 0;
         gbc.weightx = 0.0;
         gbc.weighty = 1.0;
-        inputHost.setPreferredSize(new Dimension(340, 520));
+        inputHost.setPreferredSize(new Dimension(400, 520));
         main.add(inputHost, gbc);
 
         gbc.insets = new Insets(0, 0, 0, 0);
@@ -1070,6 +1070,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
     }
 
     private static final class FormPanel extends JPanel {
+        private static final int LABEL_WIDTH = 155;
+        private static final int VALUE_WIDTH = 190;
         private final GridBagConstraints constraints = new GridBagConstraints();
         private int row = 0;
 
@@ -1103,32 +1105,53 @@ public class ProbabilityCalculatorGUI extends JFrame {
         }
 
         private JTextField addField(String label, String value) {
-            JTextField field = new JTextField(value, 12);
+            JTextField field = new JTextField(value, 14);
             field.setBackground(FIELD_BG);
             constraints.gridx = 0;
             constraints.gridy = row;
             constraints.weightx = 0.0;
-            add(new JLabel(label), constraints);
+            constraints.anchor = GridBagConstraints.NORTHWEST;
+            add(createWrappedText(label, LABEL_WIDTH), constraints);
             constraints.gridx = 1;
             constraints.weightx = 1.0;
+            constraints.anchor = GridBagConstraints.CENTER;
             add(field, constraints);
             row++;
             return field;
         }
 
         private void addReadOnly(String label, String value) {
-            JLabel valueLabel = new JLabel(value);
+            JTextArea valueLabel = createWrappedText(value, VALUE_WIDTH);
             valueLabel.setOpaque(true);
             valueLabel.setBackground(Color.WHITE);
             valueLabel.setBorder(BorderFactory.createLoweredBevelBorder());
             constraints.gridx = 0;
             constraints.gridy = row;
             constraints.weightx = 0.0;
-            add(new JLabel(label), constraints);
+            constraints.anchor = GridBagConstraints.NORTHWEST;
+            add(createWrappedText(label, LABEL_WIDTH), constraints);
             constraints.gridx = 1;
             constraints.weightx = 1.0;
+            constraints.anchor = GridBagConstraints.CENTER;
             add(valueLabel, constraints);
             row++;
+        }
+
+        private JTextArea createWrappedText(String text, int width) {
+            JTextArea label = new JTextArea(text);
+            label.setEditable(false);
+            label.setFocusable(false);
+            label.setLineWrap(true);
+            label.setWrapStyleWord(true);
+            label.setOpaque(false);
+            label.setFont(UIManager.getFont("Label.font"));
+            label.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
+            label.setSize(new Dimension(width, Short.MAX_VALUE));
+            int height = Math.max(20, label.getPreferredSize().height);
+            label.setPreferredSize(new Dimension(width, height));
+            label.setMinimumSize(new Dimension(width, 20));
+            label.setToolTipText(text);
+            return label;
         }
 
         private void addHint(String text) {
