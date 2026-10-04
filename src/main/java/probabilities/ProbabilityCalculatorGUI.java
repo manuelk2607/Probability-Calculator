@@ -730,127 +730,269 @@ public class ProbabilityCalculatorGUI extends JFrame {
             case "segment.between" -> de ? "Zwischenbereich" : "Between";
             case "segment.rightTail" -> de ? "Rechte Fläche" : "Right tail";
             case "info.complement" -> de ? """
+                    Zweck:
+                    Nutze diese Ansicht, wenn du zu einer bekannten Wahrscheinlichkeit das Gegenereignis berechnen willst.
+
                     Eingaben:
-                    Pr(A) und Pr(B) sind Wahrscheinlichkeiten zwischen 0 und 1.
+                    Pr(A): Wahrscheinlichkeit, dass Ereignis A eintritt. Wert zwischen 0 und 1.
+                    Pr(B): Wahrscheinlichkeit, dass Ereignis B eintritt. Wert zwischen 0 und 1.
 
-                    Ergebnisse:
-                    Pr(not A) = 1 - Pr(A)
-                    Pr(not B) = 1 - Pr(B)
+                    Ausgaben:
+                    Pr(not A): Wahrscheinlichkeit, dass A nicht eintritt.
+                    Pr(not B): Wahrscheinlichkeit, dass B nicht eintritt.
 
-                    Das Diagramm zeigt jeweils Ereignis und Gegenereignis als Anteil am ganzen Ergebnisraum.
+                    Interpretation:
+                    Wenn Pr(A) = 0.30 ist, dann ist Pr(not A) = 0.70. Das bedeutet: In 70 Prozent der Fälle tritt A nicht ein.
+
+                    Diagramm:
+                    Die Balken zeigen Ereignis und Gegenereignis zusammen als vollständigen Ergebnisraum von 100 Prozent.
                     """ : """
+                    Purpose:
+                    Use this view when you know a probability and want the probability of the complementary event.
+
                     Inputs:
-                    Pr(A) and Pr(B) are probabilities between 0 and 1.
+                    Pr(A): Probability that event A occurs. Value between 0 and 1.
+                    Pr(B): Probability that event B occurs. Value between 0 and 1.
 
-                    Results:
-                    Pr(not A) = 1 - Pr(A)
-                    Pr(not B) = 1 - Pr(B)
+                    Outputs:
+                    Pr(not A): Probability that A does not occur.
+                    Pr(not B): Probability that B does not occur.
 
-                    The chart shows each event and its complement as parts of the whole sample space.
+                    Interpretation:
+                    If Pr(A) = 0.30, then Pr(not A) = 0.70. This means A does not occur in 70 percent of cases.
+
+                    Chart:
+                    The bars show each event and its complement as the full sample space of 100 percent.
                     """;
             case "info.joint" -> de ? """
+                    Zweck:
+                    Nutze diese Ansicht, wenn du wissen willst, wie zwei Ereignisse A und B zusammen den Ergebnisraum aufteilen.
+
                     Eingaben:
-                    Pr(A), Pr(B) und optional Pr(A and B). Wenn Pr(A and B) leer bleibt, wird Unabhängigkeit angenommen.
+                    Pr(A): Wahrscheinlichkeit von A.
+                    Pr(B): Wahrscheinlichkeit von B.
+                    Pr(A and B): Wahrscheinlichkeit, dass A und B gleichzeitig eintreten. Optional.
 
-                    Ergebnisse:
-                    Pr(A and B), Pr(A or B), Pr(A without B), Pr(B without A) und Pr(neither).
+                    Wichtig:
+                    Wenn Pr(A and B) leer bleibt, nimmt die App Unabhängigkeit an und berechnet Pr(A and B) = Pr(A) * Pr(B).
+                    Wenn du einen eigenen Schnittwert eingibst, muss er logisch zu Pr(A) und Pr(B) passen.
 
-                    Das Diagramm zerlegt den Ergebnisraum in A only, A and B, B only und Neither.
+                    Ausgaben:
+                    Pr(A and B): gemeinsamer Anteil.
+                    Pr(A or B): A oder B oder beide.
+                    Pr(A without B): A tritt ein, B nicht.
+                    Pr(B without A): B tritt ein, A nicht.
+                    Pr(neither): weder A noch B.
+
+                    Anwendung:
+                    Gut für Vierfeldertafeln, überlappende Ereignisse und Plausibilitätschecks von Wahrscheinlichkeitsangaben.
                     """ : """
+                    Purpose:
+                    Use this view to see how two events A and B partition the sample space.
+
                     Inputs:
-                    Pr(A), Pr(B), and optionally Pr(A and B). If Pr(A and B) is empty, independence is assumed.
+                    Pr(A): Probability of A.
+                    Pr(B): Probability of B.
+                    Pr(A and B): Probability that A and B occur together. Optional.
 
-                    Results:
-                    Pr(A and B), Pr(A or B), Pr(A without B), Pr(B without A), and Pr(neither).
+                    Important:
+                    If Pr(A and B) is empty, the app assumes independence and calculates Pr(A and B) = Pr(A) * Pr(B).
+                    If you enter your own intersection, it must be logically compatible with Pr(A) and Pr(B).
 
-                    The chart decomposes the sample space into A only, A and B, B only, and Neither.
+                    Outputs:
+                    Pr(A and B): shared part.
+                    Pr(A or B): A or B or both.
+                    Pr(A without B): A occurs, B does not.
+                    Pr(B without A): B occurs, A does not.
+                    Pr(neither): neither A nor B occurs.
+
+                    Use case:
+                    Useful for contingency tables, overlapping events, and plausibility checks of probability values.
                     """;
             case "info.conditional" -> de ? """
+                    Zweck:
+                    Nutze diese Ansicht, wenn du Wahrscheinlichkeiten unter einer Bedingung berechnen willst.
+
                     Eingaben:
-                    Pr(A and B), Pr(A) und Pr(B). Die Schnittwahrscheinlichkeit darf nicht größer als Pr(A) oder Pr(B) sein.
+                    Pr(A and B): Wahrscheinlichkeit, dass A und B gemeinsam eintreten.
+                    Pr(A): Grundwahrscheinlichkeit von A.
+                    Pr(B): Grundwahrscheinlichkeit von B.
 
-                    Ergebnisse:
-                    Pr(A|B) = Pr(A and B) / Pr(B)
-                    Pr(B|A) = Pr(A and B) / Pr(A)
+                    Ausgaben:
+                    Pr(A|B): Wahrscheinlichkeit von A, wenn B bereits gilt.
+                    Pr(B|A): Wahrscheinlichkeit von B, wenn A bereits gilt.
 
-                    Das Diagramm zeigt die bedingten Anteile im jeweiligen eingeschränkten Grundraum.
+                    Interpretation:
+                    Pr(A|B) betrachtet nicht mehr den gesamten Ergebnisraum, sondern nur noch die Fälle, in denen B eingetreten ist.
+
+                    Anwendung:
+                    Hilfreich bei Diagnostik, Filterbedingungen, Teilgruppen und Vierfeldertafeln.
                     """ : """
+                    Purpose:
+                    Use this view to calculate probabilities under a condition.
+
                     Inputs:
-                    Pr(A and B), Pr(A), and Pr(B). The intersection must not be greater than Pr(A) or Pr(B).
+                    Pr(A and B): Probability that A and B occur together.
+                    Pr(A): Base probability of A.
+                    Pr(B): Base probability of B.
 
-                    Results:
-                    Pr(A|B) = Pr(A and B) / Pr(B)
-                    Pr(B|A) = Pr(A and B) / Pr(A)
+                    Outputs:
+                    Pr(A|B): Probability of A given that B is true.
+                    Pr(B|A): Probability of B given that A is true.
 
-                    The chart shows conditional proportions in the respective restricted sample space.
+                    Interpretation:
+                    Pr(A|B) no longer uses the whole sample space. It only looks at cases where B occurred.
+
+                    Use case:
+                    Helpful for diagnostics, filters, subgroups, and contingency tables.
                     """;
             case "info.bayes" -> de ? """
+                    Zweck:
+                    Nutze diese Ansicht, wenn mehrere mögliche Ursachen A_i zu einem beobachteten Ereignis B führen können.
+
                     Eingaben:
-                    Liste Pr(B|A_i), Liste Pr(A_i) und der Index des gesuchten A_i. Beide Listen müssen gleich lang sein; Pr(A_i) muss zusammen 1 ergeben.
+                    Pr(B|A_i): Liste der Wahrscheinlichkeiten für B unter jeder Ursache A_i.
+                    Pr(A_i): Liste der Vorwahrscheinlichkeiten der Ursachen. Diese Werte müssen zusammen 1 ergeben.
+                    Gesuchtes A_i: Index der Ursache, für die Pr(A_i|B) berechnet werden soll.
 
-                    Ergebnisse:
-                    Pr(B) nach dem Satz der totalen Wahrscheinlichkeit, Pr(A_i|B) nach Bayes und die Einzelbeiträge Pr(B|A_i) * Pr(A_i).
+                    Ausgaben:
+                    Pr(B): Gesamtwahrscheinlichkeit von B über alle Ursachen hinweg.
+                    Pr(A_i|B): aktualisierte Wahrscheinlichkeit der gewählten Ursache nach Beobachtung von B.
+                    Contribution A_i: Beitrag jeder Ursache zu Pr(B).
 
-                    Das Diagramm zeigt, welche A_i wie stark zu Pr(B) beitragen.
+                    Interpretation:
+                    Bayes aktualisiert Vorwissen. Aus Pr(A_i) wird nach Beobachtung von B die Posterior-Wahrscheinlichkeit Pr(A_i|B).
+
+                    Anwendung:
+                    Diagnostische Tests, Fehlerursachen, Klassifikation und Entscheidungsunterstützung.
                     """ : """
+                    Purpose:
+                    Use this view when several possible causes A_i can lead to an observed event B.
+
                     Inputs:
-                    List of Pr(B|A_i), list of Pr(A_i), and the index of the requested A_i. Lists must have equal length; Pr(A_i) must sum to 1.
+                    Pr(B|A_i): List of probabilities for B under each cause A_i.
+                    Pr(A_i): List of prior probabilities of the causes. These values must sum to 1.
+                    Requested A_i: Index of the cause for which Pr(A_i|B) should be calculated.
 
-                    Results:
-                    Pr(B) from total probability, Pr(A_i|B) from Bayes, and the contributions Pr(B|A_i) * Pr(A_i).
+                    Outputs:
+                    Pr(B): Total probability of B across all causes.
+                    Pr(A_i|B): Updated probability of the selected cause after observing B.
+                    Contribution A_i: Contribution of each cause to Pr(B).
 
-                    The chart shows how strongly each A_i contributes to Pr(B).
+                    Interpretation:
+                    Bayes updates prior knowledge. Pr(A_i) becomes the posterior probability Pr(A_i|B) after observing B.
+
+                    Use case:
+                    Diagnostic tests, root-cause analysis, classification, and decision support.
                     """;
             case "info.binomial" -> de ? """
+                    Zweck:
+                    Nutze diese Ansicht für eine feste Anzahl unabhängiger Versuche mit genau zwei möglichen Ausgängen: Erfolg oder Misserfolg.
+
                     Eingaben:
-                    n = Anzahl unabhängiger Versuche, k = genaue Trefferzahl, lower/upper = Intervallgrenzen, p = Trefferwahrscheinlichkeit pro Versuch.
+                    n: Anzahl der Versuche, zum Beispiel 10 Würfe oder 100 getestete Personen.
+                    k: genaue Trefferzahl, deren Wahrscheinlichkeit berechnet werden soll.
+                    lower und upper: Grenzen für einen Trefferbereich.
+                    p: Erfolgswahrscheinlichkeit pro Versuch, zwischen 0 und 1.
 
-                    Ergebnisse:
-                    Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), Erwartungswert E(X) und Varianz.
+                    Ausgaben:
+                    Pr(X = k): Wahrscheinlichkeit für genau k Treffer.
+                    Pr(X <= k): Wahrscheinlichkeit für höchstens k Treffer.
+                    Pr(lower <= X <= upper): Wahrscheinlichkeit für einen Trefferbereich.
+                    E(X): erwartete Trefferzahl.
+                    Var(X): Streuung der Trefferzahl.
 
-                    Das Diagramm zeigt die Wahrscheinlichkeitsverteilung über alle Trefferzahlen; k wird hervorgehoben.
+                    Anwendung:
+                    Qualitätskontrolle, Trefferquoten, Multiple-Choice-Aufgaben, Erfolgs-/Misserfolgsmodelle.
                     """ : """
+                    Purpose:
+                    Use this view for a fixed number of independent trials with exactly two outcomes: success or failure.
+
                     Inputs:
-                    n = number of independent trials, k = exact number of successes, lower/upper = interval bounds, p = success probability per trial.
+                    n: Number of trials, for example 10 throws or 100 tested people.
+                    k: Exact number of successes whose probability should be calculated.
+                    lower and upper: Bounds for a success interval.
+                    p: Success probability per trial, between 0 and 1.
 
-                    Results:
-                    Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), expected value E(X), and variance.
+                    Outputs:
+                    Pr(X = k): Probability of exactly k successes.
+                    Pr(X <= k): Probability of at most k successes.
+                    Pr(lower <= X <= upper): Probability of a success interval.
+                    E(X): Expected number of successes.
+                    Var(X): Variance of the number of successes.
 
-                    The chart shows the probability distribution over all success counts; k is highlighted.
+                    Use case:
+                    Quality control, hit rates, multiple-choice tasks, success/failure models.
                     """;
             case "info.poisson" -> de ? """
+                    Zweck:
+                    Nutze diese Ansicht für seltene oder zufällige Ereignisse pro Zeit-, Raum- oder Mengeneinheit.
+
                     Eingaben:
-                    lambda = erwartete Ereignisanzahl im Intervall, k = genaue Anzahl, lower/upper = Intervallgrenzen.
+                    lambda: erwartete Ereignisanzahl im betrachteten Intervall. Muss größer als 0 sein.
+                    k: genaue Anzahl an Ereignissen.
+                    lower und upper: Intervallgrenzen für einen Ereignisbereich.
 
-                    Ergebnisse:
-                    Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), Erwartungswert und Varianz.
+                    Ausgaben:
+                    Pr(X = k): Wahrscheinlichkeit für genau k Ereignisse.
+                    Pr(X <= k): Wahrscheinlichkeit für höchstens k Ereignisse.
+                    Pr(lower <= X <= upper): Wahrscheinlichkeit für einen Ereignisbereich.
+                    E(X) und Var(X): Bei Poisson beide gleich lambda.
 
-                    Das Diagramm zeigt die Poisson-Wahrscheinlichkeiten für typische Zählwerte; k wird hervorgehoben.
+                    Anwendung:
+                    Anrufe pro Stunde, Fehler pro Seite, Ausfälle pro Zeitraum, Ereignisse pro Fläche.
                     """ : """
+                    Purpose:
+                    Use this view for rare or random events per time, space, or quantity interval.
+
                     Inputs:
-                    lambda = expected event count in the interval, k = exact count, lower/upper = interval bounds.
+                    lambda: Expected event count in the interval. Must be greater than 0.
+                    k: Exact number of events.
+                    lower and upper: Bounds for an event-count interval.
 
-                    Results:
-                    Pr(X = k), Pr(X <= k), Pr(lower <= X <= upper), expected value, and variance.
+                    Outputs:
+                    Pr(X = k): Probability of exactly k events.
+                    Pr(X <= k): Probability of at most k events.
+                    Pr(lower <= X <= upper): Probability of an event-count interval.
+                    E(X) and Var(X): For Poisson both equal lambda.
 
-                    The chart shows Poisson probabilities for typical count values; k is highlighted.
+                    Use case:
+                    Calls per hour, defects per page, failures per period, events per area.
                     """;
             case "info.normal" -> de ? """
+                    Zweck:
+                    Nutze diese Ansicht für stetige Messwerte, die ungefähr normalverteilt sind.
+
                     Eingaben:
-                    mu = Mittelwert, sigma = Standardabweichung, lower/upper = Grenzen auf der x-Achse.
+                    mu: Mittelwert, also Zentrum der Verteilung.
+                    sigma: Standardabweichung. Sie muss größer als 0 sein und beschreibt die Streuung.
+                    lower und upper: Grenzen des Bereichs, dessen Wahrscheinlichkeit berechnet werden soll.
 
-                    Ergebnisse:
-                    Pr(X <= lower), Pr(lower <= X <= upper), Pr(X > upper) und die Dichte am Mittelwert f(mu).
+                    Ausgaben:
+                    Pr(X <= lower): linke Fläche bis zur unteren Grenze.
+                    Pr(lower <= X <= upper): Fläche zwischen den Grenzen.
+                    Pr(X > upper): rechte Fläche oberhalb der oberen Grenze.
+                    f(mu): Dichte am Mittelwert. Das ist keine Wahrscheinlichkeit, sondern die Höhe der Dichtekurve.
 
-                    Das Diagramm zeigt die Flächenanteile links, zwischen den Grenzen und rechts.
+                    Anwendung:
+                    Messfehler, Körpergrößen, Prüfwerte, z-ähnliche Bereiche und Normalapproximationen.
                     """ : """
+                    Purpose:
+                    Use this view for continuous measurements that are approximately normally distributed.
+
                     Inputs:
-                    mu = mean, sigma = standard deviation, lower/upper = x-axis bounds.
+                    mu: Mean, the center of the distribution.
+                    sigma: Standard deviation. It must be greater than 0 and describes spread.
+                    lower and upper: Bounds of the interval whose probability should be calculated.
 
-                    Results:
-                    Pr(X <= lower), Pr(lower <= X <= upper), Pr(X > upper), and density at the mean f(mu).
+                    Outputs:
+                    Pr(X <= lower): Left area up to the lower bound.
+                    Pr(lower <= X <= upper): Area between the bounds.
+                    Pr(X > upper): Right area above the upper bound.
+                    f(mu): Density at the mean. This is not a probability, but the height of the density curve.
 
-                    The chart shows the left, middle, and right area proportions.
+                    Use case:
+                    Measurement errors, heights, test values, z-like intervals, and normal approximations.
                     """;
             default -> key;
         };

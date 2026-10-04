@@ -24,6 +24,7 @@ English:
 - Binomial, Poisson, and normal distributions
 - Charts for complements, four-part decompositions, conditional proportions, Bayes contributions, and distributions
 - Info buttons for every calculation type
+- Detailed help dialogs explaining required inputs, outputs, interpretation, charts, and use cases
 - German/English language switch
 
 Deutsch:
@@ -37,6 +38,7 @@ Deutsch:
 - Normalverteilung mit Links-, Intervall- und Rechtswahrscheinlichkeit
 - Diagramme fuer Komplementanteile, Vierfelder-Zerlegung, bedingte Anteile, Bayes-Beitraege und Verteilungen
 - Info-Buttons fuer jede Berechnungsart
+- Ausfuehrliche Hilfedialoge zu Eingabewerten, Ausgabewerten, Interpretation, Diagrammen und typischen Anwendungen
 - Sprachumschaltung zwischen Deutsch und Englisch
 
 ## Bedienung
@@ -45,7 +47,7 @@ Deutsch:
 2. Links die benoetigten Werte eintragen.
 3. Mit `Berechnen` / `Calculate` die Rechnung starten.
 4. Rechts erscheinen die Ergebnisse und darunter ein Diagramm.
-5. Mit `Info` oeffnet sich eine kurze Beschreibung der benoetigten Eingaben und Ergebnisse.
+5. Mit `Info` oeffnet sich eine detaillierte Beschreibung der benoetigten Eingaben, Ergebnisse, Interpretation und typischen Anwendungen.
 6. Ueber `Sprache` / `Language` kann zwischen Deutsch und Englisch gewechselt werden.
 
 Wahrscheinlichkeiten werden als Dezimalzahlen zwischen `0` und `1` eingegeben. Die GUI akzeptiert Punkt und Komma, zum Beispiel `0.25` oder `0,25`.
