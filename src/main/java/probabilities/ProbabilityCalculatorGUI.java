@@ -37,7 +37,10 @@ import java.util.List;
 public class ProbabilityCalculatorGUI extends JFrame {
     private static final Color WINDOW_BG = new Color(232, 232, 232);
     private static final Color PANEL_BG = new Color(244, 244, 244);
-    private static final Color FIELD_BG = Color.WHITE;
+    private static final Color FIELD_BG = new Color(255, 252, 237);
+    private static final Color INFO_FIELD_BG = new Color(236, 241, 247);
+    private static final Color FIELD_BORDER = new Color(77, 119, 178);
+    private static final Color INFO_FIELD_BORDER = new Color(150, 158, 169);
     private static final Color BORDER = new Color(150, 150, 150);
     private static final Color BUTTON_BLUE = new Color(214, 224, 239);
     private static final Color GRAPH_BLUE = new Color(75, 126, 190);
@@ -149,11 +152,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         gbc.gridx = 2;
         header.add(new JLabel(t("header.inputMode")), gbc);
 
-        JLabel modeLabel = new JLabel(t("header.probabilityMode"));
-        modeLabel.setBorder(BorderFactory.createLoweredBevelBorder());
-        modeLabel.setOpaque(true);
-        modeLabel.setBackground(Color.WHITE);
-        modeLabel.setPreferredSize(new Dimension(190, 24));
+        JTextArea modeLabel = createHeaderInfoField(t("header.probabilityMode"));
         gbc.gridx = 3;
         header.add(modeLabel, gbc);
 
@@ -170,6 +169,27 @@ public class ProbabilityCalculatorGUI extends JFrame {
         header.add(new JLabel(), gbc);
 
         return header;
+    }
+
+    private JTextArea createHeaderInfoField(String text) {
+        JTextArea field = new JTextArea(text);
+        field.setEditable(false);
+        field.setFocusable(false);
+        field.setLineWrap(true);
+        field.setWrapStyleWord(true);
+        field.setOpaque(true);
+        field.setBackground(INFO_FIELD_BG);
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(INFO_FIELD_BORDER),
+                BorderFactory.createEmptyBorder(3, 6, 3, 6)
+        ));
+        field.setFont(UIManager.getFont("Label.font"));
+        field.setToolTipText(text);
+        field.setSize(new Dimension(235, Short.MAX_VALUE));
+        int height = Math.max(26, field.getPreferredSize().height);
+        field.setPreferredSize(new Dimension(235, height));
+        field.setMinimumSize(new Dimension(210, 26));
+        return field;
     }
 
     private JPanel createMainContent() {
@@ -272,6 +292,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         form.addReadOnly(t("field.selectedProcedure"), type.displayName(language));
         form.addReadOnly(t("field.tails"), type.tailDescription(language));
         form.addSeparator();
+        form.addLegend(t("legend.input"), t("legend.info"));
 
         switch (type) {
             case COMPLEMENT -> createComplementInputs(form);
@@ -679,6 +700,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
             case "panel.plot" -> de ? "Wahrscheinlichkeitsdiagramm" : "Probability plot";
             case "section.analysis" -> de ? "Analyse" : "Analysis";
             case "section.input" -> de ? "Eingabeparameter" : "Input parameters";
+            case "legend.input" -> de ? "Gelb/blau: Eingabefeld" : "Yellow/blue: editable input";
+            case "legend.info" -> de ? "Grau/blau: Info-Feld" : "Grey/blue: information field";
             case "field.selectedProcedure" -> de ? "Gewähltes Verfahren" : "Selected procedure";
             case "field.tails" -> de ? "Bereich" : "Tail(s)";
             case "field.requestedAi" -> de ? "Gesuchtes A_i" : "Requested A_i";
@@ -1107,6 +1130,11 @@ public class ProbabilityCalculatorGUI extends JFrame {
         private JTextField addField(String label, String value) {
             JTextField field = new JTextField(value, 14);
             field.setBackground(FIELD_BG);
+            field.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(FIELD_BORDER),
+                    BorderFactory.createEmptyBorder(3, 5, 3, 5)
+            ));
+            field.setToolTipText(label);
             constraints.gridx = 0;
             constraints.gridy = row;
             constraints.weightx = 0.0;
@@ -1123,8 +1151,11 @@ public class ProbabilityCalculatorGUI extends JFrame {
         private void addReadOnly(String label, String value) {
             JTextArea valueLabel = createWrappedText(value, VALUE_WIDTH);
             valueLabel.setOpaque(true);
-            valueLabel.setBackground(Color.WHITE);
-            valueLabel.setBorder(BorderFactory.createLoweredBevelBorder());
+            valueLabel.setBackground(INFO_FIELD_BG);
+            valueLabel.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(INFO_FIELD_BORDER),
+                    BorderFactory.createEmptyBorder(3, 5, 3, 5)
+            ));
             constraints.gridx = 0;
             constraints.gridy = row;
             constraints.weightx = 0.0;
@@ -1135,6 +1166,43 @@ public class ProbabilityCalculatorGUI extends JFrame {
             constraints.anchor = GridBagConstraints.CENTER;
             add(valueLabel, constraints);
             row++;
+        }
+
+        private void addLegend(String inputText, String infoText) {
+            JPanel legend = new JPanel(new GridBagLayout());
+            legend.setOpaque(false);
+            GridBagConstraints legendConstraints = new GridBagConstraints();
+            legendConstraints.gridy = 0;
+            legendConstraints.anchor = GridBagConstraints.WEST;
+            legendConstraints.insets = new Insets(0, 0, 0, 7);
+
+            addLegendItem(legend, legendConstraints, 0, FIELD_BG, FIELD_BORDER, inputText);
+            addLegendItem(legend, legendConstraints, 2, INFO_FIELD_BG, INFO_FIELD_BORDER, infoText);
+
+            constraints.gridx = 0;
+            constraints.gridy = row++;
+            constraints.gridwidth = 2;
+            constraints.weightx = 1.0;
+            constraints.insets = new Insets(2, 8, 8, 8);
+            add(legend, constraints);
+            constraints.insets = new Insets(4, 8, 4, 8);
+            constraints.gridwidth = 1;
+        }
+
+        private void addLegendItem(JPanel legend, GridBagConstraints constraints, int x, Color fill, Color border, String text) {
+            JPanel swatch = new JPanel();
+            swatch.setPreferredSize(new Dimension(22, 14));
+            swatch.setBackground(fill);
+            swatch.setBorder(BorderFactory.createLineBorder(border));
+            constraints.gridx = x;
+            legend.add(swatch, constraints);
+
+            JLabel label = new JLabel(text);
+            label.setFont(label.getFont().deriveFont(11f));
+            constraints.gridx = x + 1;
+            constraints.insets = new Insets(0, 0, 0, x == 0 ? 14 : 0);
+            legend.add(label, constraints);
+            constraints.insets = new Insets(0, 0, 0, 7);
         }
 
         private JTextArea createWrappedText(String text, int width) {
