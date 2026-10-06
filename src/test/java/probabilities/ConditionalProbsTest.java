@@ -30,4 +30,14 @@ class ConditionalProbsTest {
     void rejectsZeroDenominator() {
         assertThrows(IllegalArgumentException.class, () -> getProbAGivenB(0.1, 0.0));
     }
+
+    @Test void rejectsProbabilitiesGreaterThanOneForEveryConditionalVariant() {
+        assertThrows(IllegalArgumentException.class, () -> getProbAGivenB(0.6, 0.3));
+        assertThrows(IllegalArgumentException.class, () -> getProbBGivenA(0.6, 0.3));
+        assertThrows(IllegalArgumentException.class, () -> getProbNotAGivenB(0.6, 0.3));
+        assertThrows(IllegalArgumentException.class, () -> getProbNotBGivenA(0.6, 0.3));
+        assertThrows(IllegalArgumentException.class, () -> getProbAGivenNotB(0.6, 0.3));
+        assertThrows(IllegalArgumentException.class, () -> getProbBGivenNotA(0.6, 0.3));
+        assertThrows(IllegalArgumentException.class, () -> getProbAGivenB(0.9, 0.8, 0.1));
+    }
 }

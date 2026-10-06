@@ -6,7 +6,7 @@ final class ProbabilityUtils {
 
     static double requireProbability(double value, String name) {
         if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
-            throw new IllegalArgumentException(name + " muss zwischen 0 und 1 liegen.");
+            throw new ProbabilityException(name + " muss zwischen 0 und 1 liegen.", name + " must be between 0 and 1.");
         }
         return value;
     }
@@ -14,7 +14,7 @@ final class ProbabilityUtils {
     static double requirePositiveProbability(double value, String name) {
         requireProbability(value, name);
         if (value == 0.0) {
-            throw new IllegalArgumentException(name + " darf nicht 0 sein.");
+            throw new ProbabilityException(name + " darf nicht 0 sein.", name + " must not be 0.");
         }
         return value;
     }
@@ -23,8 +23,18 @@ final class ProbabilityUtils {
         requireProbability(intersection, name);
         double lowerBound = Math.max(0.0, probA + probB - 1.0);
         double upperBound = Math.min(probA, probB);
-        if (intersection < lowerBound - 1e-12 || intersection > upperBound + 1e-12) {
-            throw new IllegalArgumentException(name + " passt nicht zu den Randwahrscheinlichkeiten.");
+        if (intersection < lowerBound || intersection > upperBound) {
+            throw new ProbabilityException(name + " passt nicht zu den Randwahrscheinlichkeiten.", name + " is inconsistent with the marginal probabilities.");
         }
+    }
+
+    static double conditionalRatio(double intersection, double denominator) {
+        requireProbability(intersection, "P(intersection)");
+        requirePositiveProbability(denominator, "P(condition)");
+        if (intersection > denominator) {
+            throw new ProbabilityException("Die Schnittwahrscheinlichkeit darf die Bedingung nicht uebersteigen.",
+                    "The intersection probability must not exceed the conditioning probability.");
+        }
+        return intersection / denominator;
     }
 }

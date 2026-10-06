@@ -25,4 +25,9 @@ class TotalBayesProbsTest {
     void rejectsInvalidPriorDistribution() {
         assertThrows(IllegalArgumentException.class, () -> totalProbability(List.of(0.9, 0.2), List.of(0.3, 0.6)));
     }
+
+    @Test void rejectsNullEntriesAndInconsistentBayesMarginals() {
+        assertThrows(IllegalArgumentException.class, () -> totalProbability(java.util.Arrays.asList(0.9, null), List.of(0.3, 0.7)));
+        assertThrows(IllegalArgumentException.class, () -> calcBayes(0.9, 0.8, 0.1));
+    }
 }

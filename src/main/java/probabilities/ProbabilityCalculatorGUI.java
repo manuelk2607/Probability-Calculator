@@ -3,6 +3,12 @@ package probabilities;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JCheckBox;
+import javax.swing.JTabbedPane;
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
+import javax.swing.SwingWorker;
+import javax.swing.table.DefaultTableModel;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -30,9 +36,24 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.event.ItemEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.awt.datatransfer.StringSelection;
+import java.nio.file.Path;
+import java.io.IOException;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.EnumMap;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CancellationException;
 
 public class ProbabilityCalculatorGUI extends JFrame {
     private static final Color WINDOW_BG = new Color(232, 232, 232);
@@ -50,12 +71,31 @@ public class ProbabilityCalculatorGUI extends JFrame {
 
     private final JComboBox<AnalysisType> analysisSelector = new JComboBox<>(AnalysisType.values());
     private final JComboBox<Language> languageSelector = new JComboBox<>(Language.values());
-    private final JPanel inputHost = new JPanel(new BorderLayout());
+    private final JPanel inputHost = new ScrollableInputHost();
     private final JTextArea output = new JTextArea(14, 38);
     private final ChartPanel chartPanel = new ChartPanel();
     private final JLabel statusLabel = new JLabel();
     private JPanel headerPanel;
+    private JPanel mainPanel;
     private Language language = Language.DE;
+    private AnalysisType activeType;
+    private final Map<String, JTextField> activeFields = new LinkedHashMap<>();
+    private final Map<AnalysisType, Map<String, String>> drafts = new EnumMap<>(AnalysisType.class);
+    private final List<HistoryStore.Entry> history = new ArrayList<>();
+    private final HistoryStore historyStore = new HistoryStore(Path.of(System.getProperty("probabilitycalculator.dataDir",
+            Path.of(System.getProperty("user.home"), ".probability-calculator").toString()), "history.xml"));
+    private final ExecutorService historyWriter = Executors.newSingleThreadExecutor();
+    private boolean rememberHistory = true;
+    private boolean historyLoadFailed;
+    private DefaultTableModel historyModel;
+    private JTable historyTable;
+    private JTextArea historyDetails;
+    private JCheckBox historyRemember;
+    private JTabbedPane resultTabs;
+    private SwingWorker<CalculationService.Result, Void> calculationWorker;
+    private CalculationService.Result lastResult;
+    private JButton calculateButton;
+    private boolean rebuildingLanguage;
 
     private JTextField probAField;
     private JTextField probBField;
@@ -75,14 +115,31 @@ public class ProbabilityCalculatorGUI extends JFrame {
     public ProbabilityCalculatorGUI() {
         super("Wahrscheinlichkeitsrechner");
         configureLookAndFeel();
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setMinimumSize(new Dimension(940, 640));
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setMinimumSize(new Dimension(980, 720));
+        try {
+            HistoryStore.State state = historyStore.load();
+            rememberHistory = state.remember();
+            language = Language.valueOf(state.language());
+            history.addAll(state.entries());
+        } catch (IOException exception) {
+            historyLoadFailed = true;
+            rememberHistory = false;
+        }
+        setTitle(t("app.title"));
+        addWindowListener(new WindowAdapter() {
+            @Override public void windowClosed(WindowEvent event) {
+                cancelCalculation();
+                historyWriter.shutdown();
+            }
+        });
         setLayout(new BorderLayout(8, 8));
         getContentPane().setBackground(WINDOW_BG);
 
         headerPanel = createHeader();
         add(headerPanel, BorderLayout.NORTH);
-        add(createMainContent(), BorderLayout.CENTER);
+        mainPanel = createMainContent();
+        add(mainPanel, BorderLayout.CENTER);
         add(createFooter(), BorderLayout.SOUTH);
 
         analysisSelector.setRenderer(new DefaultListCellRenderer() {
@@ -97,7 +154,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         });
 
         analysisSelector.addItemListener(event -> {
-            if (event.getStateChange() == ItemEvent.SELECTED) {
+            if (event.getStateChange() == ItemEvent.SELECTED && !rebuildingLanguage) {
                 rebuildInputPanel();
             }
         });
@@ -111,6 +168,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
 
         pack();
         setLocationRelativeTo(null);
+        if (historyLoadFailed) SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this,
+                t("history.loadError"), t("tab.history"), JOptionPane.WARNING_MESSAGE));
     }
 
     private void configureLookAndFeel() {
@@ -137,7 +196,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
         gbc.gridx = 0;
         gbc.gridy = 0;
-        gbc.gridwidth = 4;
+        gbc.gridwidth = 6;
         header.add(title, gbc);
 
         gbc.gridwidth = 1;
@@ -149,22 +208,24 @@ public class ProbabilityCalculatorGUI extends JFrame {
         gbc.gridx = 1;
         header.add(analysisSelector, gbc);
 
-        gbc.gridx = 2;
+        gbc.gridx = 0;
+        gbc.gridy = 2;
         header.add(new JLabel(t("header.inputMode")), gbc);
 
         JTextArea modeLabel = createHeaderInfoField(t("header.probabilityMode"));
-        gbc.gridx = 3;
+        gbc.gridx = 1;
         header.add(modeLabel, gbc);
 
-        gbc.gridx = 4;
+        gbc.gridx = 2;
+        gbc.gridy = 1;
         header.add(new JLabel(t("header.language")), gbc);
 
         languageSelector.setPreferredSize(new Dimension(110, 26));
         languageSelector.setSelectedItem(language);
-        gbc.gridx = 5;
+        gbc.gridx = 3;
         header.add(languageSelector, gbc);
 
-        gbc.gridx = 6;
+        gbc.gridx = 4;
         gbc.weightx = 1.0;
         header.add(new JLabel(), gbc);
 
@@ -204,13 +265,21 @@ public class ProbabilityCalculatorGUI extends JFrame {
         gbc.gridy = 0;
         gbc.weightx = 0.0;
         gbc.weighty = 1.0;
-        inputHost.setPreferredSize(new Dimension(400, 520));
-        main.add(inputHost, gbc);
+        inputHost.setPreferredSize(new Dimension(400, 550));
+        JScrollPane inputs = new JScrollPane(inputHost);
+        inputs.setBorder(BorderFactory.createEmptyBorder());
+        inputs.setPreferredSize(new Dimension(420, 550));
+        inputs.setMinimumSize(new Dimension(410, 200));
+        main.add(inputs, gbc);
 
         gbc.insets = new Insets(0, 0, 0, 0);
         gbc.gridx = 1;
         gbc.weightx = 1.0;
-        main.add(createOutputArea(), gbc);
+        resultTabs = new JTabbedPane();
+        resultTabs.setMinimumSize(new Dimension(520, 300));
+        resultTabs.addTab(t("tab.results"), createOutputArea());
+        resultTabs.addTab(t("tab.history"), createHistoryPanel());
+        main.add(resultTabs, gbc);
 
         return main;
     }
@@ -229,6 +298,16 @@ public class ProbabilityCalculatorGUI extends JFrame {
         resultPanel.setBackground(PANEL_BG);
         resultPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), t("panel.output")));
         resultPanel.add(new JScrollPane(output), BorderLayout.CENTER);
+        JButton copy = new JButton(t("button.copy"));
+        copy.addActionListener(event -> {
+            if (!output.getText().isBlank()) {
+                getToolkit().getSystemClipboard().setContents(new StringSelection(output.getText()), null);
+                statusLabel.setText(t("status.copied"));
+            }
+        });
+        JPanel resultActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 2));
+        resultActions.add(copy);
+        resultPanel.add(resultActions, BorderLayout.SOUTH);
 
         JPanel graphPanel = new JPanel(new BorderLayout());
         graphPanel.setBackground(PANEL_BG);
@@ -265,6 +344,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
     }
 
     private void rebuildLanguage() {
+        rebuildingLanguage = true;
         setTitle(t("app.title"));
         AnalysisType selectedType = (AnalysisType) analysisSelector.getSelectedItem();
         remove(headerPanel);
@@ -272,17 +352,44 @@ public class ProbabilityCalculatorGUI extends JFrame {
         add(headerPanel, BorderLayout.NORTH);
         analysisSelector.setSelectedItem(selectedType);
         rebuildInputPanel();
+        remove(mainPanel);
+        mainPanel = createMainContent();
+        add(mainPanel, BorderLayout.CENTER);
+        if (lastResult != null) displayResult(lastResult);
+        getRootPane().setDefaultButton(calculateButton);
+        rebuildingLanguage = false;
+        saveHistory();
         revalidate();
         repaint();
     }
 
     private void rebuildInputPanel() {
+        cancelCalculation();
+        if (activeType != null) drafts.put(activeType, captureInputs());
+        activeType = (AnalysisType) analysisSelector.getSelectedItem();
+        activeFields.clear();
         inputHost.removeAll();
         inputHost.add(createInputPanel((AnalysisType) analysisSelector.getSelectedItem()), BorderLayout.CENTER);
+        registerFields();
+        restoreInputs(drafts.get(activeType));
+        activeFields.values().forEach(field -> field.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            private void changed() {
+                if (rebuildingLanguage) return;
+                cancelCalculation();
+                lastResult = null;
+                output.setText("");
+                chartPanel.clear(t("chart.empty"));
+                statusLabel.setText(t("status.ready"));
+            }
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent event) { changed(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent event) { changed(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent event) { changed(); }
+        }));
         inputHost.revalidate();
         inputHost.repaint();
         output.setText("");
         chartPanel.clear(t("chart.empty"));
+        if (!rebuildingLanguage) lastResult = null;
         statusLabel.setText(t("status.ready"));
     }
 
@@ -313,7 +420,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         probAField = form.addField("Pr(A)", "0.30");
         probBField = form.addField("Pr(B)", "0.40");
         form.addActionRow(
-                actionButton(t("button.calculate"), this::calculateComplement),
+                actionButton(t("button.calculate"), this::calculateCurrent),
                 actionButton(t("button.clear"), this::clearCurrent),
                 infoButton(t("button.info"), t("info.complement"))
         );
@@ -326,7 +433,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         intersectionField = form.addField("Pr(A and B)", "");
         form.addHint(t("hint.joint"));
         form.addActionRow(
-                actionButton(t("button.calculate"), this::calculateJoint),
+                actionButton(t("button.calculate"), this::calculateCurrent),
                 actionButton(t("button.clear"), this::clearCurrent),
                 infoButton(t("button.info"), t("info.joint"))
         );
@@ -338,7 +445,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         probAField = form.addField("Pr(A)", "0.30");
         probBField = form.addField("Pr(B)", "0.40");
         form.addActionRow(
-                actionButton(t("button.calculate"), this::calculateConditional),
+                actionButton(t("button.calculate"), this::calculateCurrent),
                 actionButton(t("button.clear"), this::clearCurrent),
                 infoButton(t("button.info"), t("info.conditional"))
         );
@@ -351,7 +458,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         selectedIndexField = form.addField(t("field.requestedAi"), "1");
         form.addHint(t("hint.bayes"));
         form.addActionRow(
-                actionButton(t("button.calculate"), this::calculateBayes),
+                actionButton(t("button.calculate"), this::calculateCurrent),
                 actionButton(t("button.clear"), this::clearCurrent),
                 infoButton(t("button.info"), t("info.bayes"))
         );
@@ -366,9 +473,9 @@ public class ProbabilityCalculatorGUI extends JFrame {
         probabilityField = form.addField(t("field.successProbability"), "0.50");
         form.addHint(t("hint.binomial"));
         form.addActionRow(
-                actionButton(t("button.calculate"), this::calculateBinomial),
+                actionButton(t("button.calculate"), this::calculateCurrent),
                 actionButton(t("button.clear"), this::clearCurrent),
-                infoButton(t("button.info"), t("info.binomial"))
+                infoButton(t("button.info"), t("info.binomial") + "\n\n" + t("info.discreteExtras"))
         );
     }
 
@@ -380,9 +487,9 @@ public class ProbabilityCalculatorGUI extends JFrame {
         upperField = form.addField(t("field.upper"), "4");
         form.addHint(t("hint.poisson"));
         form.addActionRow(
-                actionButton(t("button.calculate"), this::calculatePoisson),
+                actionButton(t("button.calculate"), this::calculateCurrent),
                 actionButton(t("button.clear"), this::clearCurrent),
-                infoButton(t("button.info"), t("info.poisson"))
+                infoButton(t("button.info"), t("info.poisson") + "\n\n" + t("info.discreteExtras"))
         );
     }
 
@@ -394,7 +501,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         upperField = form.addField(t("field.upperX"), "1.00");
         form.addHint(t("hint.normal"));
         form.addActionRow(
-                actionButton(t("button.calculate"), this::calculateNormal),
+                actionButton(t("button.calculate"), this::calculateCurrent),
                 actionButton(t("button.clear"), this::clearCurrent),
                 infoButton(t("button.info"), t("info.normal"))
         );
@@ -403,13 +510,18 @@ public class ProbabilityCalculatorGUI extends JFrame {
     private JButton actionButton(String label, Runnable action) {
         JButton button = new JButton(label);
         button.setBackground(BUTTON_BLUE);
+        if (label.equals(t("button.calculate"))) {
+            calculateButton = button;
+            getRootPane().setDefaultButton(button);
+        }
         button.addActionListener(_event -> {
             try {
                 action.run();
-                statusLabel.setText(t("status.success"));
             } catch (IllegalArgumentException exception) {
                 statusLabel.setText(t("status.checkInput"));
-                JOptionPane.showMessageDialog(this, exception.getMessage(), t("dialog.checkInput"), JOptionPane.WARNING_MESSAGE);
+                String message = language == Language.EN && exception instanceof ProbabilityException validation
+                        ? validation.englishMessage() : exception.getMessage();
+                JOptionPane.showMessageDialog(this, message, t("dialog.checkInput"), JOptionPane.WARNING_MESSAGE);
             }
         });
         return button;
@@ -418,273 +530,235 @@ public class ProbabilityCalculatorGUI extends JFrame {
     private JButton infoButton(String label, String message) {
         JButton button = new JButton(label);
         button.setBackground(new Color(232, 232, 232));
-        button.addActionListener(_event -> JOptionPane.showMessageDialog(this, message.strip(), t("button.info"), JOptionPane.INFORMATION_MESSAGE));
+        button.addActionListener(_event -> {
+            JTextArea help = new JTextArea(message.strip(), 20, 52);
+            help.setEditable(false);
+            help.setLineWrap(true);
+            help.setWrapStyleWord(true);
+            help.setFont(UIManager.getFont("Label.font"));
+            help.setMargin(new Insets(8, 8, 8, 8));
+            help.setCaretPosition(0);
+            JOptionPane.showMessageDialog(this, new JScrollPane(help), t("button.info"), JOptionPane.PLAIN_MESSAGE);
+        });
         return button;
     }
 
-    private void calculateComplement() {
-        double a = readProbability(probAField, "Pr(A)");
-        double b = readProbability(probBField, "Pr(B)");
-        double notA = BaseProbabilities.getProbNotA(a);
-        double notB = BaseProbabilities.getProbNotB(b);
-
-        showResults(List.of(
-                new ResultLine("Pr(A)", a),
-                new ResultLine("Pr(not A)", notA),
-                new ResultLine("Pr(B)", b),
-                new ResultLine("Pr(not B)", notB)
-        ), t("heading.complement"));
-
-        chartPanel.setStackedBars(List.of(
-                new BarGroup("A", List.of(
-                        new Segment("Pr(A)", a, GRAPH_BLUE),
-                        new Segment("Pr(not A)", notA, GRAPH_RED)
-                )),
-                new BarGroup("B", List.of(
-                        new Segment("Pr(B)", b, GRAPH_GREEN),
-                        new Segment("Pr(not B)", notB, GRAPH_YELLOW)
-                ))
-        ), t("chart.complement"));
-    }
-
-    private void calculateJoint() {
-        double a = readProbability(probAField, "Pr(A)");
-        double b = readProbability(probBField, "Pr(B)");
-        double intersection = intersectionField.getText().isBlank()
-                ? JointProbs.getProbAAndB(a, b)
-                : readProbability(intersectionField, "Pr(A and B)");
-        double aOnly = JointProbs.getProbAMinusB(a, intersection);
-        double bOnly = JointProbs.getProbBMinusA(b, intersection);
-        double neither = 1.0 - JointProbs.getProbAOrB(a, b, intersection);
-        ProbabilityUtils.requireProbability(neither, "Pr(neither A nor B)");
-
-        showResults(List.of(
-                new ResultLine("Pr(A and B)", intersection),
-                new ResultLine("Pr(A or B)", JointProbs.getProbAOrB(a, b, intersection)),
-                new ResultLine(t("result.aWithoutB"), aOnly),
-                new ResultLine(t("result.bWithoutA"), bOnly),
-                new ResultLine("Pr(neither)", neither)
-        ), intersectionField.getText().isBlank()
-                ? t("heading.jointIndependent")
-                : t("heading.joint"));
-
-        chartPanel.setSegments(List.of(
-                new Segment(t("segment.aOnly"), aOnly, GRAPH_BLUE),
-                new Segment("A and B", intersection, GRAPH_GREEN),
-                new Segment(t("segment.bOnly"), bOnly, GRAPH_RED),
-                new Segment("Neither", neither, new Color(165, 165, 165))
-        ), t("chart.joint"));
-    }
-
-    private void calculateConditional() {
-        double intersection = readProbability(intersectionField, "Pr(A and B)");
-        double a = readProbability(probAField, "Pr(A)");
-        double b = readProbability(probBField, "Pr(B)");
-        double aGivenB = ConditionalProbs.getProbAGivenB(intersection, b);
-        double bGivenA = ConditionalProbs.getProbBGivenA(intersection, a);
-
-        showResults(List.of(
-                new ResultLine("Pr(A|B)", aGivenB),
-                new ResultLine("Pr(B|A)", bGivenA),
-                new ResultLine("Pr(A and B)", intersection)
-        ), t("heading.conditional"));
-
-        chartPanel.setStackedBars(List.of(
-                new BarGroup("Given B", List.of(
-                        new Segment("Pr(A|B)", aGivenB, GRAPH_BLUE),
-                        new Segment("Pr(not A|B)", 1.0 - aGivenB, GRAPH_RED)
-                )),
-                new BarGroup("Given A", List.of(
-                        new Segment("Pr(B|A)", bGivenA, GRAPH_GREEN),
-                        new Segment("Pr(not B|A)", 1.0 - bGivenA, GRAPH_YELLOW)
-                ))
-        ), t("chart.conditional"));
-    }
-
-    private void calculateBayes() {
-        List<Double> likelihoods = parseList(likelihoodsField.getText(), "Pr(B|A_i)");
-        List<Double> priors = parseList(priorsField.getText(), "Pr(A_i)");
-        int index = parseIndex(selectedIndexField.getText(), likelihoods.size()) - 1;
-        double total = TotalBayesProbs.totalProbability(likelihoods, priors);
-        double posterior = TotalBayesProbs.calcBayes(likelihoods.get(index), priors.get(index), total);
-
-        List<ResultLine> lines = new ArrayList<>();
-        lines.add(new ResultLine("Pr(B)", total));
-        lines.add(new ResultLine("Pr(A" + (index + 1) + "|B)", posterior));
-        for (int i = 0; i < likelihoods.size(); i++) {
-            lines.add(new ResultLine(t("result.contribution") + " A" + (i + 1), likelihoods.get(i) * priors.get(i)));
+    private void registerFields() {
+        switch (activeType) {
+            case COMPLEMENT -> { activeFields.put("a", probAField); activeFields.put("b", probBField); }
+            case JOINT, CONDITIONAL -> { activeFields.put("a", probAField); activeFields.put("b", probBField); activeFields.put("intersection", intersectionField); }
+            case BAYES -> { activeFields.put("likelihoods", likelihoodsField); activeFields.put("priors", priorsField); activeFields.put("index", selectedIndexField); }
+            case BINOMIAL -> { activeFields.put("n", trialsField); activeFields.put("k", successesField); activeFields.put("lower", lowerField); activeFields.put("upper", upperField); activeFields.put("p", probabilityField); }
+            case POISSON -> { activeFields.put("lambda", lambdaField); activeFields.put("k", successesField); activeFields.put("lower", lowerField); activeFields.put("upper", upperField); }
+            case NORMAL -> { activeFields.put("mean", meanField); activeFields.put("sd", standardDeviationField); activeFields.put("lower", lowerField); activeFields.put("upper", upperField); }
         }
-        showResults(lines, t("heading.bayes"));
-
-        List<Segment> segments = new ArrayList<>();
-        Color[] colors = {GRAPH_BLUE, GRAPH_RED, GRAPH_GREEN, GRAPH_YELLOW, new Color(129, 102, 168), new Color(92, 145, 160)};
-        for (int i = 0; i < likelihoods.size(); i++) {
-            segments.add(new Segment("A" + (i + 1), likelihoods.get(i) * priors.get(i), colors[i % colors.length]));
-        }
-        chartPanel.setSegments(segments, t("chart.bayes"));
+        activeFields.forEach((key, field) -> field.getAccessibleContext().setAccessibleName(key));
     }
 
-    private void calculateBinomial() {
-        int n = readNonNegativeInt(trialsField, "n");
-        int k = readNonNegativeInt(successesField, "k");
-        int lower = readNonNegativeInt(lowerField, "lower");
-        int upper = readNonNegativeInt(upperField, "upper");
-        double p = readProbability(probabilityField, "p");
-        double exact = ProbabilityDistributions.binomialProbability(n, k, p);
-        double cumulative = ProbabilityDistributions.binomialCumulative(n, k, p);
-        double interval = ProbabilityDistributions.binomialInterval(n, lower, upper, p);
-        double expected = ProbabilityDistributions.expectedBinomial(n, p);
-        double variance = ProbabilityDistributions.varianceBinomial(n, p);
-
-        showResults(List.of(
-                new ResultLine("Pr(X = k)", exact),
-                new ResultLine("Pr(X <= k)", cumulative),
-                new ResultLine("Pr(lower <= X <= upper)", interval),
-                new ResultLine("E(X)", expected),
-                new ResultLine("Var(X)", variance)
-        ), t("heading.binomial"));
-
-        List<DataPoint> points = new ArrayList<>();
-        for (int i = 0; i <= n; i++) {
-            points.add(new DataPoint(String.valueOf(i), ProbabilityDistributions.binomialProbability(n, i, p), i == k ? GRAPH_RED : GRAPH_BLUE));
-        }
-        chartPanel.setDiscreteBars(points, t("chart.binomial"));
+    private Map<String, String> captureInputs() {
+        Map<String, String> inputs = new LinkedHashMap<>();
+        activeFields.forEach((key, field) -> inputs.put(key, field.getText()));
+        return inputs;
     }
 
-    private void calculatePoisson() {
-        double lambda = readPositiveDouble(lambdaField, "lambda");
-        int k = readNonNegativeInt(successesField, "k");
-        int lower = readNonNegativeInt(lowerField, "lower");
-        int upper = readNonNegativeInt(upperField, "upper");
-        double exact = ProbabilityDistributions.poissonProbability(lambda, k);
-        double cumulative = ProbabilityDistributions.poissonCumulative(lambda, k);
-        double interval = ProbabilityDistributions.poissonInterval(lambda, lower, upper);
-
-        showResults(List.of(
-                new ResultLine("Pr(X = k)", exact),
-                new ResultLine("Pr(X <= k)", cumulative),
-                new ResultLine("Pr(lower <= X <= upper)", interval),
-                new ResultLine("E(X)", lambda),
-                new ResultLine("Var(X)", lambda)
-        ), t("heading.poisson"));
-
-        int max = Math.max(upper, Math.max(k, (int) Math.ceil(lambda + 4.0 * Math.sqrt(lambda))));
-        max = Math.min(max, 60);
-        List<DataPoint> points = new ArrayList<>();
-        for (int i = 0; i <= max; i++) {
-            points.add(new DataPoint(String.valueOf(i), ProbabilityDistributions.poissonProbability(lambda, i), i == k ? GRAPH_RED : GRAPH_GREEN));
-        }
-        chartPanel.setDiscreteBars(points, t("chart.poisson"));
+    private void restoreInputs(Map<String, String> inputs) {
+        if (inputs != null) activeFields.forEach((key, field) -> field.setText(inputs.getOrDefault(key, "")));
     }
 
-    private void calculateNormal() {
-        double mean = readDouble(meanField, "mu");
-        double standardDeviation = readPositiveDouble(standardDeviationField, "sigma");
-        double lower = readDouble(lowerField, "lower");
-        double upper = readDouble(upperField, "upper");
-        double left = ProbabilityDistributions.normalCumulative(mean, standardDeviation, lower);
-        double between = ProbabilityDistributions.normalInterval(mean, standardDeviation, lower, upper);
-        double right = 1.0 - ProbabilityDistributions.normalCumulative(mean, standardDeviation, upper);
+    private void calculateCurrent() { calculateCurrent(true); }
 
-        showResults(List.of(
-                new ResultLine("Pr(X <= lower)", left),
-                new ResultLine("Pr(lower <= X <= upper)", between),
-                new ResultLine("Pr(X > upper)", right),
-                new ResultLine("f(mu)", ProbabilityDistributions.normalDensity(mean, standardDeviation, mean))
-        ), t("heading.normal"));
+    private void calculateCurrent(boolean record) {
+        cancelCalculation();
+        CalculationRequest request = new CalculationRequest(activeType.name(), captureInputs());
+        output.setText("");
+        lastResult = null;
+        chartPanel.clear(t("chart.empty"));
+        statusLabel.setText(t("status.calculating"));
+        resultTabs.setSelectedIndex(0);
+        calculationWorker = new SwingWorker<>() {
+            @Override protected CalculationService.Result doInBackground() {
+                return CalculationService.calculate(request);
+            }
+            @Override protected void done() {
+                if (calculationWorker != this || isCancelled()) return;
+                calculationWorker = null;
+                try {
+                    lastResult = get();
+                    displayResult(lastResult);
+                    statusLabel.setText(t("status.success"));
+                    if (record) {
+                        history.add(0, new HistoryStore.Entry(Instant.now(), request, output.getText()));
+                        if (history.size() > HistoryStore.LIMIT) history.remove(history.size() - 1);
+                        refreshHistory();
+                        saveHistory();
+                    }
+                } catch (CancellationException ignored) {
+                    statusLabel.setText(t("status.ready"));
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    statusLabel.setText(t("status.checkInput"));
+                } catch (ExecutionException exception) {
+                    Throwable cause = exception.getCause();
+                    statusLabel.setText(t("status.checkInput"));
+                    String message = language == Language.EN && cause instanceof ProbabilityException validation
+                            ? validation.englishMessage() : cause.getMessage();
+                    JOptionPane.showMessageDialog(ProbabilityCalculatorGUI.this,
+                            cause instanceof IllegalArgumentException ? message : t("error.calculation"),
+                            t("dialog.checkInput"), JOptionPane.WARNING_MESSAGE);
+                }
+            }
+        };
+        calculationWorker.execute();
+    }
 
-        chartPanel.setSegments(List.of(
-                new Segment(t("segment.leftTail"), left, GRAPH_BLUE),
-                new Segment(t("segment.between"), between, GRAPH_GREEN),
-                new Segment(t("segment.rightTail"), right, GRAPH_RED)
-        ), t("chart.normal"));
+    private void cancelCalculation() {
+        if (calculationWorker != null) { calculationWorker.cancel(true); calculationWorker = null; }
     }
 
     private void clearCurrent() {
+        cancelCalculation();
+        activeFields.values().forEach(field -> field.setText(""));
+        lastResult = null;
         output.setText("");
         chartPanel.clear(t("chart.empty"));
         statusLabel.setText(t("status.ready"));
     }
 
-    private void showResults(List<ResultLine> lines, String heading) {
-        StringBuilder builder = new StringBuilder();
-        builder.append(heading).append(System.lineSeparator());
-        builder.append("=".repeat(Math.max(heading.length(), 12))).append(System.lineSeparator()).append(System.lineSeparator());
-        for (ResultLine line : lines) {
-            builder.append(String.format("%-24s %s%n", line.label(), format(line.value())));
+    private void displayResult(CalculationService.Result result) {
+        String heading = t("heading." + result.heading());
+        StringBuilder builder = new StringBuilder(heading).append("\n\n");
+        Locale locale = language == Language.DE ? Locale.GERMANY : Locale.US;
+        for (CalculationService.Value line : result.values()) {
+            String numeric = String.format(locale, "%.8g", line.value());
+            if (line.probability()) numeric += String.format(locale, "   %.4f%%", line.value() * 100);
+            builder.append(label(line.label())).append(": ").append(numeric).append('\n');
         }
         output.setText(builder.toString());
-    }
-
-    private double readProbability(JTextField field, String name) {
-        try {
-            return ProbabilityUtils.requireProbability(Double.parseDouble(field.getText().trim().replace(',', '.')), name);
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException(name + " muss eine Zahl sein.");
+        output.setCaretPosition(0);
+        String chartTitle = t("chart." + activeType.name().toLowerCase(Locale.ROOT));
+        if (!result.groups().isEmpty()) {
+            chartPanel.setStackedBars(result.groups().stream().map(group -> new BarGroup(label(group.label()),
+                    group.shares().stream().map(this::segment).toList())).toList(), chartTitle);
+        } else if (!result.points().isEmpty()) {
+            chartPanel.setDiscreteBars(result.points().stream().map(point -> new DataPoint(point.label(),
+                    point.value(), point.selected() ? GRAPH_RED : GRAPH_BLUE)).toList(), chartTitle + " " + t("chart.bins"));
+        } else {
+            chartPanel.setSegments(result.shares().stream().map(this::segment).toList(), chartTitle);
         }
     }
 
-    private List<Double> parseList(String raw, String name) {
-        try {
-            List<Double> values = Arrays.stream(raw.trim().split("[;\\s]+"))
-                    .filter(value -> !value.isBlank())
-                    .map(value -> ProbabilityUtils.requireProbability(Double.parseDouble(value.replace(',', '.')), name))
-                    .toList();
-            if (values.isEmpty()) {
-                throw new IllegalArgumentException(name + " darf nicht leer sein.");
+    private Segment segment(CalculationService.Share share) {
+        Color[] colors = {GRAPH_BLUE, GRAPH_RED, GRAPH_GREEN, GRAPH_YELLOW, new Color(165, 165, 165)};
+        return new Segment(label(share.label()), share.value(), colors[share.color()]);
+    }
+
+    private String label(String key) {
+        if (key.startsWith("segment.") || key.startsWith("result.")) return t(key);
+        if (language == Language.EN) return key;
+        return key.replace("not ", "nicht ").replace(" and ", " und ").replace(" or ", " oder ")
+                .replace("neither", "weder A noch B").replace("lower", "unten").replace("upper", "oben");
+    }
+
+    private JPanel createHistoryPanel() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        historyModel = new DefaultTableModel(new String[]{t("history.time"), t("history.analysis"), t("history.inputs")}, 0) {
+            @Override public boolean isCellEditable(int row, int column) { return false; }
+        };
+        historyTable = new JTable(historyModel);
+        historyTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        historyTable.setRowHeight(25);
+        historyTable.getColumnModel().getColumn(0).setPreferredWidth(150);
+        historyTable.getColumnModel().getColumn(1).setPreferredWidth(110);
+        historyTable.getColumnModel().getColumn(2).setPreferredWidth(250);
+        historyDetails = new JTextArea(9, 30);
+        historyDetails.setEditable(false);
+        historyDetails.setLineWrap(true);
+        historyDetails.setWrapStyleWord(true);
+        historyDetails.setMargin(new Insets(8, 8, 8, 8));
+        javax.swing.JSplitPane split = new javax.swing.JSplitPane(javax.swing.JSplitPane.VERTICAL_SPLIT,
+                new JScrollPane(historyTable), new JScrollPane(historyDetails));
+        split.setResizeWeight(0.55);
+        split.setBorder(BorderFactory.createEmptyBorder());
+        panel.add(split, BorderLayout.CENTER);
+        historyTable.getSelectionModel().addListSelectionListener(event -> {
+            int row = historyTable.getSelectedRow();
+            if (row >= 0 && row < history.size()) {
+                HistoryStore.Entry entry = history.get(row);
+                historyDetails.setText(t("history.inputs") + "\n" + inputSummary(entry.request(), "\n")
+                        + "\n\n" + entry.result());
+                historyDetails.setCaretPosition(0);
             }
-            return values;
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException(name + " enthält eine ungültige Zahl.");
-        }
-    }
-
-    private int parseIndex(String raw, int max) {
-        try {
-            int index = Integer.parseInt(raw.trim());
-            if (index < 1 || index > max) {
-                throw new IllegalArgumentException("Das gesuchte A_i muss zwischen 1 und " + max + " liegen.");
+        });
+        JPanel actions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
+        JButton restore = new JButton(t("history.restore"));
+        restore.addActionListener(event -> {
+            int row = historyTable.getSelectedRow();
+            if (row < 0) return;
+            CalculationRequest request = history.get(row).request();
+            AnalysisType type = AnalysisType.valueOf(request.analysis());
+            analysisSelector.setSelectedItem(type);
+            restoreInputs(request.inputs());
+            calculateCurrent(false);
+        });
+        JButton delete = new JButton(t("history.delete"));
+        delete.addActionListener(event -> {
+            int row = historyTable.getSelectedRow();
+            if (row >= 0) { history.remove(row); refreshHistory(); saveHistory(); }
+        });
+        JButton clear = new JButton(t("history.clear"));
+        clear.addActionListener(event -> {
+            if (JOptionPane.showConfirmDialog(this, t("history.confirm"), t("tab.history"),
+                    JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
+                history.clear();
+                historyLoadFailed = false;
+                historyRemember.setEnabled(true);
+                refreshHistory();
+                saveHistory();
             }
-            return index;
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException("Das gesuchte A_i muss eine ganze Zahl sein.");
-        }
+        });
+        actions.add(restore); actions.add(delete); actions.add(clear);
+        JPanel controls = new JPanel(new BorderLayout(4, 8));
+        JCheckBox remember = new JCheckBox(t("history.remember"), rememberHistory);
+        historyRemember = remember;
+        remember.setEnabled(!historyLoadFailed);
+        remember.setToolTipText(t("history.privacy"));
+        remember.addActionListener(event -> { rememberHistory = remember.isSelected(); saveHistory(); });
+        controls.add(remember, BorderLayout.NORTH);
+        controls.add(actions, BorderLayout.SOUTH);
+        JButton historyInfo = infoButton(t("button.info"), t("info.history"));
+        controls.add(historyInfo, BorderLayout.EAST);
+        panel.add(controls, BorderLayout.SOUTH);
+        refreshHistory();
+        if (!history.isEmpty()) historyTable.setRowSelectionInterval(0, 0);
+        return panel;
     }
 
-    private int readNonNegativeInt(JTextField field, String name) {
-        try {
-            int value = Integer.parseInt(field.getText().trim());
-            if (value < 0) {
-                throw new IllegalArgumentException(name + " darf nicht negativ sein.");
+    private String inputSummary(CalculationRequest request, String separator) {
+        return request.inputs().entrySet().stream().map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(java.util.stream.Collectors.joining(separator));
+    }
+
+    private void refreshHistory() {
+        if (historyModel == null) return;
+        historyModel.setRowCount(0);
+        DateTimeFormatter time = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss").withZone(ZoneId.systemDefault());
+        for (HistoryStore.Entry entry : history) {
+            historyModel.addRow(new String[]{time.format(entry.time()), AnalysisType.valueOf(entry.request().analysis()).comboLabel(language),
+                    inputSummary(entry.request(), "; ")});
+        }
+        historyDetails.setText(history.isEmpty() ? t("history.empty") : "");
+    }
+
+    private void saveHistory() {
+        if (historyLoadFailed || historyWriter.isShutdown()) return;
+        HistoryStore.State state = new HistoryStore.State(rememberHistory, language.name(), history);
+        historyWriter.execute(() -> {
+            try { historyStore.save(state); }
+            catch (IOException exception) {
+                SwingUtilities.invokeLater(() -> statusLabel.setText(t("history.saveError")));
             }
-            return value;
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException(name + " muss eine ganze Zahl sein.");
-        }
-    }
-
-    private double readPositiveDouble(JTextField field, String name) {
-        double value = readDouble(field, name);
-        if (value <= 0.0) {
-            throw new IllegalArgumentException(name + " muss groesser als 0 sein.");
-        }
-        return value;
-    }
-
-    private double readDouble(JTextField field, String name) {
-        try {
-            double value = Double.parseDouble(field.getText().trim().replace(',', '.'));
-            if (!Double.isFinite(value)) {
-                throw new IllegalArgumentException(name + " muss endlich sein.");
-            }
-            return value;
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException(name + " muss eine Zahl sein.");
-        }
-    }
-
-    private String format(double value) {
-        return "%.6f   %.2f%%".formatted(value, value * 100.0);
+        });
     }
 
     private String t(String key) {
@@ -692,8 +766,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
         return switch (key) {
             case "app.title" -> de ? "Wahrscheinlichkeitsrechner" : "Probability Calculator";
             case "header.family" -> de ? "Testfamilie" : "Test family";
-            case "header.inputMode" -> de ? "Eingabemodus" : "Input mode";
-            case "header.probabilityMode" -> de ? "Wahrscheinlichkeitswerte [0, 1]" : "Probability values [0, 1]";
+            case "header.inputMode" -> de ? "Zahlenformat" : "Number format";
+            case "header.probabilityMode" -> de ? "Dezimalpunkt oder -komma" : "Decimal point or comma";
             case "header.language" -> de ? "Sprache" : "Language";
             case "panel.input" -> de ? "Eingabeparameter" : "Input parameters";
             case "panel.output" -> de ? "Ausgabeparameter" : "Output parameters";
@@ -719,6 +793,32 @@ public class ProbabilityCalculatorGUI extends JFrame {
             case "button.calculate" -> de ? "Berechnen" : "Calculate";
             case "button.clear" -> de ? "Leeren" : "Clear";
             case "button.info" -> "Info";
+            case "button.copy" -> de ? "Ergebnis kopieren" : "Copy result";
+            case "status.copied" -> de ? "Ergebnis kopiert" : "Result copied";
+            case "status.calculating" -> de ? "Berechnung laeuft..." : "Calculating...";
+            case "error.calculation" -> de ? "Die Berechnung konnte nicht abgeschlossen werden. Bitte Eingaben pruefen." : "The calculation could not be completed. Please check the inputs.";
+            case "tab.results" -> de ? "Ergebnisse" : "Results";
+            case "tab.history" -> de ? "Verlauf" : "History";
+            case "history.time" -> de ? "Zeitpunkt" : "Time";
+            case "history.analysis" -> de ? "Berechnung" : "Calculation";
+            case "history.inputs" -> de ? "Eingaben" : "Inputs";
+            case "history.restore" -> de ? "Erneut laden" : "Restore";
+            case "history.delete" -> de ? "Eintrag loeschen" : "Delete entry";
+            case "history.clear" -> de ? "Verlauf leeren" : "Clear history";
+            case "history.confirm" -> de ? "Alle Eintraege im Verlauf loeschen?" : "Delete all history entries?";
+            case "history.remember" -> de ? "Verlauf lokal speichern (letzte 100)" : "Save history locally (last 100)";
+            case "history.privacy" -> de ? "Nur auf diesem Rechner. Deaktivieren entfernt gespeicherte Berechnungen; die aktuelle Sitzung bleibt sichtbar." : "Only on this computer. Disabling removes saved calculations; the current session remains visible.";
+            case "history.empty" -> de ? "Noch keine gespeicherten Berechnungen." : "No calculations saved yet.";
+            case "history.saveError" -> de ? "Verlauf konnte nicht gespeichert werden; Eintraege bleiben in dieser Sitzung erhalten." : "History could not be saved; entries remain available in this session.";
+            case "history.loadError" -> de ? "Der gespeicherte Verlauf ist nicht lesbar. Die Datei bleibt erhalten und wird nicht ueberschrieben. Mit 'Verlauf leeren' kann sie zurueckgesetzt werden." : "The saved history could not be read. The file is preserved and will not be overwritten. Use 'Clear history' to reset it.";
+            case "chart.bins" -> de ? "(Bereich 0,01-99,99%; ggf. gruppiert)" : "(0.01-99.99% range; grouped if needed)";
+            case "segment.intersection" -> de ? "A und B" : "A and B";
+            case "segment.neither" -> de ? "Weder A noch B" : "Neither A nor B";
+            case "segment.givenA" -> de ? "Gegeben A" : "Given A";
+            case "segment.givenB" -> de ? "Gegeben B" : "Given B";
+            case "segment.other" -> de ? "Weitere A_i" : "Other A_i";
+            case "info.discreteExtras" -> de ? "Zusaetzliche Ergebnisse: Pr(X > k) ist die Wahrscheinlichkeit fuer mehr als k Ereignisse. SD(X) = sqrt(Var(X)) beschreibt die Streuung in der Einheit der Zaehlwerte. Erwartungswert, Varianz, Standardabweichung und Dichte sind keine Prozentwerte. Das Diagramm zeigt den zentralen Bereich zwischen den Quantilen 0,01% und 99,99%; bei grossen Bereichen werden benachbarte Zaehlwerte zusammengefasst. Rote Balken enthalten den gewaehlten Wert k. Die numerischen Ergebnisse verwenden immer die eingegebenen Grenzen, unabhaengig vom Diagrammausschnitt. Fuer Poisson gilt 0 < lambda <= 1e9." : "Additional results: Pr(X > k) is the probability of more than k events. SD(X) = sqrt(Var(X)) describes spread in count units. Mean, variance, standard deviation and density are not percentages. The plot shows the central range between the 0.01% and 99.99% quantiles; large ranges aggregate adjacent counts. Red bars contain the selected value k. Numerical results always use the entered bounds regardless of the plotted range. For Poisson, 0 < lambda <= 1e9.";
+            case "info.history" -> de ? "Der Verlauf speichert die letzten 100 erfolgreichen Berechnungen mit Zeitpunkt, Berechnungsart, Originaleingaben und Ergebnistext. Eintrag auswaehlen, um alle Details zu sehen. 'Erneut laden' uebernimmt die Werte und berechnet sie in der aktuellen Sprache neu, ohne einen doppelten Verlaufseintrag. Einzelne Eintraege koennen geloescht oder der gesamte Verlauf geleert werden. Bei aktivierter lokaler Speicherung bleiben Eintraege nach einem Neustart erhalten. Die Datei liegt unter ~/.probability-calculator/history.xml. Deaktivieren entfernt gespeicherte Berechnungen von der Festplatte; der Verlauf der laufenden Sitzung bleibt verfuegbar. Es werden keine Daten uebertragen. Ergebnis kopieren uebertraegt den aktuellen Ergebnistext in die Zwischenablage." : "History keeps the last 100 successful calculations with time, calculation type, original inputs and result text. Select an entry to inspect its details. Restore fills the inputs and recalculates in the current language without adding a duplicate entry. Delete individual entries or clear the whole history. With local saving enabled, entries survive restarts. The file is stored at ~/.probability-calculator/history.xml. Disabling removes saved calculations from disk while keeping the current session available. No data is transmitted. Copy result places the current result text on the clipboard.";
             case "status.ready" -> de ? "Bereit" : "Ready";
             case "status.success" -> de ? "Berechnung erfolgreich" : "Calculation successful";
             case "status.checkInput" -> de ? "Eingabe prüfen" : "Check input";
@@ -727,7 +827,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
             case "hint.joint" -> de ? "Pr(A and B) leer lassen, um Unabhängigkeit anzunehmen." : "Leave Pr(A and B) empty to assume independence.";
             case "hint.bayes" -> de ? "Listenwerte mit Semikolon oder Leerzeichen trennen. Pr(A_i) muss zusammen 1 ergeben." : "Separate list values with semicolon or space. Pr(A_i) must sum to 1.";
             case "hint.binomial" -> de ? "Berechnet Pr(X = k), Pr(X <= k) und Pr(lower <= X <= upper)." : "Calculates Pr(X = k), Pr(X <= k), and Pr(lower <= X <= upper).";
-            case "hint.poisson" -> de ? "Geeignet für Zählwerte in einem festen Intervall bei unabhängigen Ereignissen." : "Useful for counts in a fixed interval when events occur independently.";
+            case "hint.poisson" -> de ? "Unabhaengige Zaehlwerte; 0 < lambda <= 1e9. Grenzen und k sind nichtnegative ganze Zahlen." : "Independent counts; 0 < lambda <= 1e9. Bounds and k are non-negative integers.";
             case "hint.normal" -> de ? "Berechnet Pr(X <= lower), Pr(lower <= X <= upper) und Pr(X > upper)." : "Calculates Pr(X <= lower), Pr(lower <= X <= upper), and Pr(X > upper).";
             case "heading.complement" -> de ? "Komplementwahrscheinlichkeiten" : "Complement probabilities";
             case "heading.joint" -> de ? "Schnitt und Vereinigung" : "Intersection and union";
@@ -1038,9 +1138,9 @@ public class ProbabilityCalculatorGUI extends JFrame {
     }
 
     private enum AnalysisType {
-        COMPLEMENT("Exact: Complements", "Exakt: Komplemente", "two sided", "zweiseitig", "Complements", "Komplemente"),
-        JOINT("Exact: Joint probability", "Exakt: Schnittwahrscheinlichkeit", "two sided", "zweiseitig", "Joint & union", "Schnitt & Oder"),
-        CONDITIONAL("Exact: Conditional probability", "Exakt: Bedingte Wahrscheinlichkeit", "one sided", "einseitig", "Conditional", "Bedingt"),
+        COMPLEMENT("Exact: Complements", "Exakt: Komplemente", "event / complement", "Ereignis / Gegenereignis", "Complements", "Komplemente"),
+        JOINT("Exact: Joint probability", "Exakt: Schnittwahrscheinlichkeit", "sample space", "Ergebnisraum", "Joint & union", "Schnitt & Oder"),
+        CONDITIONAL("Exact: Conditional probability", "Exakt: Bedingte Wahrscheinlichkeit", "conditioning event", "Bedingungsereignis", "Conditional", "Bedingt"),
         BAYES("Bayes: Total probability", "Bayes: Totale Wahrscheinlichkeit", "posterior", "posterior", "Bayes", "Bayes"),
         BINOMIAL("Distribution: Binomial", "Verteilung: Binomial", "lower / interval", "untere Grenze / Intervall", "Binomial", "Binomial"),
         POISSON("Distribution: Poisson", "Verteilung: Poisson", "lower / interval", "untere Grenze / Intervall", "Poisson", "Poisson"),
@@ -1080,9 +1180,6 @@ public class ProbabilityCalculatorGUI extends JFrame {
         }
     }
 
-    private record ResultLine(String label, double value) {
-    }
-
     private record Segment(String label, double value, Color color) {
     }
 
@@ -1090,6 +1187,15 @@ public class ProbabilityCalculatorGUI extends JFrame {
     }
 
     private record DataPoint(String label, double value, Color color) {
+    }
+
+    private static final class ScrollableInputHost extends JPanel implements javax.swing.Scrollable {
+        private ScrollableInputHost() { super(new BorderLayout()); }
+        @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        @Override public int getScrollableUnitIncrement(java.awt.Rectangle visible, int orientation, int direction) { return 20; }
+        @Override public int getScrollableBlockIncrement(java.awt.Rectangle visible, int orientation, int direction) { return visible.height - 20; }
+        @Override public boolean getScrollableTracksViewportWidth() { return true; }
+        @Override public boolean getScrollableTracksViewportHeight() { return getParent() != null && getParent().getHeight() >= getPreferredSize().height; }
     }
 
     private static final class FormPanel extends JPanel {
@@ -1156,6 +1262,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
                     BorderFactory.createLineBorder(INFO_FIELD_BORDER),
                     BorderFactory.createEmptyBorder(3, 5, 3, 5)
             ));
+            valueLabel.setSize(new Dimension(VALUE_WIDTH, Short.MAX_VALUE));
+            int valueHeight = Math.max(26, valueLabel.getUI().getPreferredSize(valueLabel).height);
+            valueLabel.setPreferredSize(new Dimension(VALUE_WIDTH, valueHeight));
+            valueLabel.setMinimumSize(new Dimension(VALUE_WIDTH, valueHeight));
             constraints.gridx = 0;
             constraints.gridy = row;
             constraints.weightx = 0.0;
@@ -1177,7 +1287,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
             legendConstraints.insets = new Insets(0, 0, 0, 7);
 
             addLegendItem(legend, legendConstraints, 0, FIELD_BG, FIELD_BORDER, inputText);
-            addLegendItem(legend, legendConstraints, 2, INFO_FIELD_BG, INFO_FIELD_BORDER, infoText);
+            legendConstraints.gridy = 1;
+            addLegendItem(legend, legendConstraints, 0, INFO_FIELD_BG, INFO_FIELD_BORDER, infoText);
 
             constraints.gridx = 0;
             constraints.gridy = row++;
@@ -1213,9 +1324,15 @@ public class ProbabilityCalculatorGUI extends JFrame {
             label.setWrapStyleWord(true);
             label.setOpaque(false);
             label.setFont(UIManager.getFont("Label.font"));
+            int longestWord = java.util.Arrays.stream(text.split("\\s+"))
+                    .mapToInt(word -> label.getFontMetrics(label.getFont()).stringWidth(word)).max().orElse(0);
+            if (longestWord > width) {
+                float size = Math.max(11f, label.getFont().getSize2D() * width / longestWord);
+                label.setFont(label.getFont().deriveFont(size));
+            }
             label.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
             label.setSize(new Dimension(width, Short.MAX_VALUE));
-            int height = Math.max(20, label.getPreferredSize().height);
+            int height = Math.max(20, label.getUI().getPreferredSize(label).height);
             label.setPreferredSize(new Dimension(width, height));
             label.setMinimumSize(new Dimension(width, 20));
             label.setToolTipText(text);
@@ -1223,11 +1340,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         }
 
         private void addHint(String text) {
-            JTextArea hint = new JTextArea(text);
-            hint.setEditable(false);
-            hint.setLineWrap(true);
-            hint.setWrapStyleWord(true);
-            hint.setOpaque(false);
+            JTextArea hint = createWrappedText(text, LABEL_WIDTH + VALUE_WIDTH);
             hint.setFont(hint.getFont().deriveFont(12f));
             constraints.gridx = 0;
             constraints.gridy = row++;
@@ -1330,13 +1443,13 @@ public class ProbabilityCalculatorGUI extends JFrame {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             paintBackground(g);
-            paintTitle(g);
+            if (mode != Mode.EMPTY) paintTitle(g);
 
             if (mode == Mode.EMPTY) {
                 paintEmpty(g);
             } else if (mode == Mode.SEGMENTS) {
                 paintSegmentBar(g, segments, 62, getHeight() / 2 - 16, getWidth() - 124, 34);
-                paintLegend(g, segments, 62, getHeight() / 2 + 42);
+                paintLegend(g, segments, 62, getHeight() / 2 + 72);
             } else if (mode == Mode.STACKED_BARS) {
                 paintStackedBars(g);
             } else {
@@ -1356,13 +1469,27 @@ public class ProbabilityCalculatorGUI extends JFrame {
         private void paintTitle(Graphics2D g) {
             g.setColor(new Color(30, 30, 30));
             g.setFont(g.getFont().deriveFont(Font.BOLD, 14f));
-            g.drawString(title, 22, 28);
+            paintWrappedText(g, title, 22, 24, getWidth() - 44);
         }
 
         private void paintEmpty(Graphics2D g) {
             g.setColor(new Color(105, 105, 105));
             g.setFont(g.getFont().deriveFont(13f));
-            g.drawString("Diagramme erscheinen nach der Berechnung.", 42, getHeight() / 2);
+            paintWrappedText(g, title, 24, getHeight() / 2, getWidth() - 48);
+        }
+
+        private void paintWrappedText(Graphics2D g, String text, int x, int y, int width) {
+            StringBuilder line = new StringBuilder();
+            for (String word : text.split(" ")) {
+                if (!line.isEmpty() && g.getFontMetrics().stringWidth(line + " " + word) > width) {
+                    g.drawString(line.toString(), x, y);
+                    y += g.getFontMetrics().getHeight();
+                    line.setLength(0);
+                }
+                if (!line.isEmpty()) line.append(' ');
+                line.append(word);
+            }
+            g.drawString(line.toString(), x, y);
         }
 
         private void paintStackedBars(Graphics2D g) {
@@ -1392,8 +1519,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
             int chartWidth = getWidth() - 92;
             int chartHeight = Math.max(90, getHeight() - 128);
             double maxValue = dataPoints.stream().mapToDouble(DataPoint::value).max().orElse(1.0);
+            if (!(maxValue > 0)) maxValue = 1;
             int gap = dataPoints.size() > 24 ? 1 : 3;
-            int barWidth = Math.max(2, (chartWidth - gap * (dataPoints.size() - 1)) / dataPoints.size());
+            double slot = (double) chartWidth / dataPoints.size();
+            int barWidth = Math.max(1, (int) slot - gap);
 
             g.setColor(new Color(225, 225, 225));
             for (int i = 0; i <= 4; i++) {
@@ -1406,7 +1535,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
 
             for (int i = 0; i < dataPoints.size(); i++) {
                 DataPoint point = dataPoints.get(i);
-                int x = chartX + i * (barWidth + gap);
+                int x = chartX + (int) Math.round(i * slot);
                 int height = (int) Math.round(chartHeight * (point.value() / maxValue));
                 int y = chartY + chartHeight - height;
                 g.setColor(point.color());
@@ -1419,10 +1548,11 @@ public class ProbabilityCalculatorGUI extends JFrame {
             g.drawLine(chartX, chartY + chartHeight, chartX + chartWidth, chartY + chartHeight);
             g.drawLine(chartX, chartY, chartX, chartY + chartHeight);
             g.setFont(g.getFont().deriveFont(10f));
-            int labelStep = Math.max(1, dataPoints.size() / 12);
+            int labelStep = Math.max(1, (int) Math.ceil(dataPoints.size() / 5.0));
             for (int i = 0; i < dataPoints.size(); i += labelStep) {
-                int x = chartX + i * (barWidth + gap);
-                g.drawString(dataPoints.get(i).label(), x, chartY + chartHeight + 16);
+                int x = chartX + (int) Math.round(i * slot);
+                String label = dataPoints.get(i).label();
+                g.drawString(label, Math.min(x, chartX + chartWidth - g.getFontMetrics().stringWidth(label)), chartY + chartHeight + 16);
             }
         }
 
@@ -1471,7 +1601,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
             int currentY = y;
             g.setFont(g.getFont().deriveFont(11f));
             for (Segment segment : unique) {
-                if (currentX > getWidth() - 180) {
+                int itemWidth = g.getFontMetrics().stringWidth(segment.label()) + 32;
+                if (currentX + itemWidth > getWidth() - 24) {
                     currentX = x;
                     currentY += 20;
                 }
@@ -1479,7 +1610,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 g.fillRect(currentX, currentY - 10, 12, 12);
                 g.setColor(new Color(40, 40, 40));
                 g.drawString(segment.label(), currentX + 17, currentY);
-                currentX += Math.max(110, g.getFontMetrics().stringWidth(segment.label()) + 32);
+                currentX += Math.max(110, itemWidth);
             }
         }
     }

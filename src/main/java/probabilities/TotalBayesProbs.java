@@ -12,22 +12,25 @@ public class TotalBayesProbs extends BaseProbabilities {
      */
     public static double totalProbability(List<Double> probBGivenA_i, List<Double> probA_i) {
         if (probBGivenA_i == null || probA_i == null) {
-            throw new IllegalArgumentException("Listen duerfen nicht null sein.");
+            throw new ProbabilityException("Listen duerfen nicht null sein.", "Lists must not be null.");
         }
         if (probBGivenA_i.isEmpty()) {
-            throw new IllegalArgumentException("Listen duerfen nicht leer sein.");
+            throw new ProbabilityException("Listen duerfen nicht leer sein.", "Lists must not be empty.");
         }
-        if (probBGivenA_i.size() != probA_i.size()) throw new IllegalArgumentException("Listen muessen gleich lang sein!");
+        if (probBGivenA_i.size() != probA_i.size()) throw new ProbabilityException("Listen muessen gleich lang sein!", "Lists must have the same length.");
         double sum = 0.0;
         double priorSum = 0.0;
         for (int i = 0; i < probBGivenA_i.size(); i++) {
+            if (probBGivenA_i.get(i) == null || probA_i.get(i) == null) {
+                throw new ProbabilityException("Listenwerte duerfen nicht null sein.", "List entries must not be null.");
+            }
             double probBGivenA = ProbabilityUtils.requireProbability(probBGivenA_i.get(i), "P(B|A" + (i + 1) + ")");
             double probA = ProbabilityUtils.requireProbability(probA_i.get(i), "P(A" + (i + 1) + ")");
             priorSum += probA;
             sum += probA * probBGivenA;
         }
         if (Math.abs(priorSum - 1.0) > 1e-9) {
-            throw new IllegalArgumentException("Die Basiswahrscheinlichkeiten P(A_i) muessen zusammen 1 ergeben.");
+            throw new ProbabilityException("Die Basiswahrscheinlichkeiten P(A_i) muessen zusammen 1 ergeben.", "Prior probabilities P(A_i) must sum to 1.");
         }
         return sum;
     }
@@ -44,6 +47,7 @@ public class TotalBayesProbs extends BaseProbabilities {
         ProbabilityUtils.requireProbability(probBGivenA, "P(B|A)");
         ProbabilityUtils.requireProbability(probA, "P(A)");
         ProbabilityUtils.requirePositiveProbability(probB, "P(B)");
-        return (probBGivenA * probA) / probB;
+        ProbabilityUtils.requirePossibleIntersection(probBGivenA * probA, probA, probB, "P(A and B)");
+        return ProbabilityUtils.conditionalRatio(probBGivenA * probA, probB);
     }
 }
