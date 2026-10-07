@@ -320,6 +320,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         output.setMargin(new Insets(8, 8, 8, 8));
 
         JPanel resultPanel = new JPanel(new BorderLayout());
+        resultPanel.setMinimumSize(new Dimension(320, 180));
         resultPanel.setBackground(PANEL_BG);
         resultPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), t("panel.output")));
         resultPanel.add(new JScrollPane(output), BorderLayout.CENTER);
