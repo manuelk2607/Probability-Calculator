@@ -1610,7 +1610,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
 
         private ChartPanel() {
             setPreferredSize(new Dimension(540, 280));
-            setMinimumSize(new Dimension(320, 240));
+            setMinimumSize(new Dimension(320, 220));
             setBackground(Color.WHITE);
             setToolTipText("");
             clear(title);
@@ -1804,17 +1804,16 @@ public class ProbabilityCalculatorGUI extends JFrame {
         private void paintStackedBars(Graphics2D g) {
             int barX = 96;
             int barWidth = getWidth() - 160;
-            int y = 72;
+            int y = 60;
             List<Segment> legendSegments = new ArrayList<>();
             for (BarGroup group : barGroups) {
                 g.setColor(new Color(45, 45, 45));
                 g.drawString(group.label(), 24, y + 22);
                 paintSegmentBar(g, group.segments(), barX, y, barWidth, 28);
                 legendSegments.addAll(group.segments());
-                y += 54;
+                y += 50;
             }
-            paintAxis(g, barX, y - 18, barWidth);
-            paintLegend(g, legendSegments, 24, y + 18);
+            paintLegend(g, legendSegments, 24, y + 12);
         }
 
         private void paintDiscreteBars(Graphics2D g) {
