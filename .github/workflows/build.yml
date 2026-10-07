@@ -35,7 +35,7 @@ jobs:
         run: xvfb-run -a mvn --batch-mode --no-transfer-progress package -Dui.tests=true
       - name: Test and build (native desktop)
         if: runner.os != 'Linux'
-        run: mvn --batch-mode --no-transfer-progress package -Dui.tests=true
+        run: mvn --batch-mode --no-transfer-progress package "-Dui.tests=true"
       - name: Native installers and bundled-runtime smoke tests
         if: matrix.java == '17' && runner.os == 'Linux'
         run: |
