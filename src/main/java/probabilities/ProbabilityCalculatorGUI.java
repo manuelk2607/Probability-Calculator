@@ -1609,6 +1609,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
 
         private ChartPanel() {
             setPreferredSize(new Dimension(540, 280));
+            setMinimumSize(new Dimension(320, 240));
             setBackground(Color.WHITE);
             setToolTipText("");
             clear(title);

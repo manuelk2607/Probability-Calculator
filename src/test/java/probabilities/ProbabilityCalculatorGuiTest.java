@@ -48,6 +48,8 @@ class ProbabilityCalculatorGuiTest {
                     SwingUtilities.invokeAndWait(() -> {
                         JTextArea output = field(frame, "output");
                         assertFalse(output.getText().isBlank(), "Missing result for analysis " + selectedType);
+                        JComponent visibleChart = field(frame, "chartPanel");
+                        assertTrue(visibleChart.getHeight() >= 240, "Chart must retain room for complete legends");
                         if (selectedType == 6) {
                             JComponent chart = field(frame, "chartPanel");
                             String tooltip = chart.getToolTipText(new java.awt.event.MouseEvent(chart,
