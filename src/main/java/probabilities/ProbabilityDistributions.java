@@ -39,26 +39,36 @@ public final class ProbabilityDistributions {
 
     public static double normalDensity(double mean, double standardDeviation, double x) {
         requireFinite(x, "x");
-        double result = normal(mean, standardDeviation).density(x);
+        double peak = normal(mean, standardDeviation).density(mean);
+        double z = standardized(mean, standardDeviation, x);
+        double result = peak * Math.exp(-0.5 * z * z);
         requireFinite(result, "f(x)");
         return result;
     }
 
     public static double normalCumulative(double mean, double standardDeviation, double x) {
         requireFinite(x, "x");
-        return normal(mean, standardDeviation).cumulativeProbability(x);
+        normal(mean, standardDeviation);
+        return NormalDistribution.of(0, 1).cumulativeProbability(standardized(mean, standardDeviation, x));
     }
 
     public static double normalSurvival(double mean, double standardDeviation, double x) {
         requireFinite(x, "x");
-        return normal(mean, standardDeviation).survivalProbability(x);
+        normal(mean, standardDeviation);
+        return NormalDistribution.of(0, 1).survivalProbability(standardized(mean, standardDeviation, x));
     }
 
     public static double normalInterval(double mean, double standardDeviation, double lower, double upper) {
         requireFinite(lower, "lower");
         requireFinite(upper, "upper");
         if (upper < lower) throw new ProbabilityException("upper muss groesser oder gleich lower sein.", "upper must be greater than or equal to lower.");
-        return normal(mean, standardDeviation).probability(lower, upper);
+        normal(mean, standardDeviation);
+        return NormalDistribution.of(0, 1).probability(standardized(mean, standardDeviation, lower), standardized(mean, standardDeviation, upper));
+    }
+
+    static double standardized(double mean, double standardDeviation, double x) {
+        double difference = x - mean;
+        return Double.isFinite(difference) ? difference / standardDeviation : x / standardDeviation - mean / standardDeviation;
     }
 
     public static double expectedBinomial(int n, double p) { return binomial(n, p).getMean(); }

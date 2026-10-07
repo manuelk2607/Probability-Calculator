@@ -48,6 +48,22 @@ class ProbabilityCalculatorGuiTest {
                     SwingUtilities.invokeAndWait(() -> {
                         JTextArea output = field(frame, "output");
                         assertFalse(output.getText().isBlank(), "Missing result for analysis " + selectedType);
+                        if (selectedType == 6) {
+                            JComponent chart = field(frame, "chartPanel");
+                            String tooltip = chart.getToolTipText(new java.awt.event.MouseEvent(chart,
+                                    java.awt.event.MouseEvent.MOUSE_MOVED, 0, 0, chart.getWidth() / 2, 80, 0, false));
+                            assertNotNull(tooltip);
+                            assertTrue(tooltip.contains("f(x)"));
+                            assertTrue(tooltip.contains("Pr(X"));
+                            BufferedImage plot = call(chart, "snapshot");
+                            assertEquals(chart.getWidth() * 2, plot.getWidth());
+                            int colored = 0;
+                            for (int x = 0; x < plot.getWidth(); x += 2) for (int y = 0; y < plot.getHeight(); y += 2) {
+                                java.awt.Color color = new java.awt.Color(plot.getRGB(x, y));
+                                if (Math.abs(color.getRed() - color.getGreen()) > 20 || Math.abs(color.getGreen() - color.getBlue()) > 20) colored++;
+                            }
+                            assertTrue(colored > 500, "Density curve/shaded regions must be visible");
+                        }
                         capture(frame, screenshots.resolve(selectedLanguage + "-" + selectedType + "-980.png"));
                         assertWrappedFieldsFit(frame.getContentPane());
                         frame.setSize(1280, 900);
@@ -74,7 +90,29 @@ class ProbabilityCalculatorGuiTest {
                 JTable history = field(frame, "historyTable");
                 assertEquals(15, history.getRowCount());
                 history.setRowSelectionInterval(0, 0);
+                JCheckBox favorite = field(frame, "favoriteToggle");
+                favorite.doClick();
+                JTextField search = field(frame, "historySearch");
+                search.setText("0,75");
+                assertEquals(1, history.getRowCount());
+                JCheckBox onlyFavorites = field(frame, "favoritesOnly");
+                onlyFavorites.doClick();
+                assertEquals(1, history.getRowCount());
+                search.setText("does-not-exist");
+                assertEquals(0, history.getRowCount());
+                search.setText("");
+                assertEquals(1, history.getRowCount());
+                onlyFavorites.doClick();
+                JComboBox<?> filter = field(frame, "historyTypeFilter");
+                filter.setSelectedIndex(1);
+                assertEquals(3, history.getRowCount());
+                filter.setSelectedIndex(0);
+                history.getRowSorter().toggleSortOrder(0);
+                history.getRowSorter().toggleSortOrder(0);
+                history.setRowSelectionInterval(0, 0);
+                assertEquals(Boolean.TRUE, history.getValueAt(0, 0));
                 capture(frame, screenshots.resolve("history-980.png"));
+                assertWrappedFieldsFit(frame.getContentPane());
                 findButton(tabs.getComponentAt(1), "Erneut laden").doClick();
             });
             awaitCalculation(frame);
@@ -84,10 +122,27 @@ class ProbabilityCalculatorGuiTest {
                 JTextArea output = field(frame, "output");
                 assertTrue(output.getText().contains("0,75000000"));
             });
+            SwingUtilities.invokeAndWait(() -> {
+                ProbabilityCalculatorGUI second = new ProbabilityCalculatorGUI();
+                try {
+                    assertFalse((Boolean) field(second, "historyWritable"));
+                    JCheckBox remember = field(second, "historyRemember");
+                    assertFalse(remember.isEnabled(), "Second window must not overwrite the shared history");
+                    second.setSize(980, 720);
+                    second.setVisible(true);
+                    JTabbedPane tabs = field(second, "resultTabs");
+                    tabs.setSelectedIndex(1);
+                    second.validate();
+                    assertWrappedFieldsFit(second.getContentPane());
+                    capture(second, screenshots.resolve("history-second-window.png"));
+                } finally { second.dispose(); }
+            });
             SwingUtilities.invokeAndWait(frame::dispose);
             java.util.concurrent.ExecutorService writer = field(frame, "historyWriter");
             assertTrue(writer.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
-            assertEquals(15, new HistoryStore(dataDirectory.resolve("history.xml")).load().entries().size());
+            var persisted = new HistoryStore(dataDirectory.resolve("history.xml")).load().entries();
+            assertEquals(15, persisted.size());
+            assertEquals(1, persisted.stream().filter(HistoryStore.Entry::favorite).count());
         } finally {
             if (holder.get() != null) SwingUtilities.invokeAndWait(holder.get()::dispose);
             if (oldDirectory == null) System.clearProperty("probabilitycalculator.dataDir");
@@ -134,6 +189,15 @@ class ProbabilityCalculatorGuiTest {
             if (button != null) return button;
         }
         return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T call(Object object, String name) {
+        try {
+            var method = object.getClass().getDeclaredMethod(name);
+            method.setAccessible(true);
+            return (T) method.invoke(object);
+        } catch (ReflectiveOperationException exception) { throw new AssertionError(exception); }
     }
 
     @SuppressWarnings("unchecked")

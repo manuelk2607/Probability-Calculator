@@ -12,13 +12,15 @@ final class CalculationService {
     record Share(String label, double value, int color) { }
     record Group(String label, List<Share> shares) { }
     record Point(String label, double value, boolean selected) { }
-    record Result(String heading, List<Value> values, List<Share> shares, List<Group> groups, List<Point> points) { }
+    record NormalPlot(double mean, double standardDeviation, double lower, double upper) { }
+    record Result(String heading, List<Value> values, List<Share> shares, List<Group> groups, List<Point> points, NormalPlot normalPlot) { }
 
     static Result calculate(CalculationRequest request) {
         List<Value> values = new ArrayList<>();
         List<Share> shares = new ArrayList<>();
         List<Group> groups = new ArrayList<>();
         List<Point> points = new ArrayList<>();
+        NormalPlot normalPlot = null;
         String heading = request.analysis().toLowerCase(java.util.Locale.ROOT);
         switch (request.analysis()) {
             case "COMPLEMENT" -> {
@@ -31,6 +33,7 @@ final class CalculationService {
                 double a = probability(request, "a"), b = probability(request, "b");
                 boolean independent = request.inputs().get("intersection").isBlank();
                 double intersection = independent ? a * b : probability(request, "intersection");
+                intersection = ProbabilityUtils.requirePossibleIntersection(intersection, a, b, "Pr(A and B)");
                 double union = JointProbs.getProbAOrB(a, b, intersection);
                 values.addAll(List.of(new Value("Pr(A and B)", intersection), new Value("Pr(A or B)", union), new Value("result.aWithoutB", a - intersection), new Value("result.bWithoutA", b - intersection), new Value("Pr(neither)", 1 - union)));
                 shares.addAll(List.of(new Share("segment.aOnly", a - intersection, 0), new Share("segment.intersection", intersection, 2), new Share("segment.bOnly", b - intersection, 1), new Share("segment.neither", 1 - union, 4)));
@@ -38,14 +41,14 @@ final class CalculationService {
             }
             case "CONDITIONAL" -> {
                 double a = probability(request, "a"), b = probability(request, "b"), intersection = probability(request, "intersection");
-                ProbabilityUtils.requirePossibleIntersection(intersection, a, b, "Pr(A and B)");
+                intersection = ProbabilityUtils.requirePossibleIntersection(intersection, a, b, "Pr(A and B)");
                 double ab = ConditionalProbs.getProbAGivenB(intersection, b), ba = ConditionalProbs.getProbBGivenA(intersection, a);
                 values.addAll(List.of(new Value("Pr(A|B)", ab), new Value("Pr(B|A)", ba), new Value("Pr(A and B)", intersection)));
                 groups.add(new Group("segment.givenB", List.of(new Share("Pr(A|B)", ab, 0), new Share("Pr(not A|B)", 1 - ab, 1))));
                 groups.add(new Group("segment.givenA", List.of(new Share("Pr(B|A)", ba, 2), new Share("Pr(not B|A)", 1 - ba, 3))));
             }
             case "BAYES" -> {
-                List<Double> likelihoods = list(request, "likelihoods"), priors = list(request, "priors");
+                List<Double> likelihoods = list(request, "likelihoods"), priors = TotalBayesProbs.normalizedPriors(list(request, "priors"));
                 double total = TotalBayesProbs.totalProbability(likelihoods, priors);
                 int index = integer(request, "index");
                 if (index < 1 || index > priors.size()) throw new ProbabilityException("A_i muss zwischen 1 und " + priors.size() + " liegen.", "A_i must be between 1 and " + priors.size() + ".");
@@ -92,10 +95,11 @@ final class CalculationService {
                 double left = ProbabilityDistributions.normalCumulative(mean, sd, lower), between = ProbabilityDistributions.normalInterval(mean, sd, lower, upper), right = ProbabilityDistributions.normalSurvival(mean, sd, upper);
                 values.addAll(List.of(new Value("Pr(X <= lower)", left), new Value("Pr(lower <= X <= upper)", between), new Value("Pr(X > upper)", right), new Value("f(mu)", ProbabilityDistributions.normalDensity(mean, sd, mean), false)));
                 shares.addAll(List.of(new Share("segment.leftTail", left, 0), new Share("segment.between", between, 2), new Share("segment.rightTail", right, 1)));
+                normalPlot = new NormalPlot(mean, sd, lower, upper);
             }
             default -> throw new IllegalArgumentException("Unknown calculation type: " + request.analysis());
         }
-        return new Result(heading, List.copyOf(values), List.copyOf(shares), List.copyOf(groups), List.copyOf(points));
+        return new Result(heading, List.copyOf(values), List.copyOf(shares), List.copyOf(groups), List.copyOf(points), normalPlot);
     }
 
     private static double probability(CalculationRequest request, String key) { return ProbabilityUtils.requireProbability(number(request, key), key); }

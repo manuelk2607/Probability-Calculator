@@ -46,22 +46,22 @@ public class JointProbs extends BaseProbabilities {
     public static double getProbAOrB(double probA, double probB, double probAAndB) {
         ProbabilityUtils.requireProbability(probA, "P(A)");
         ProbabilityUtils.requireProbability(probB, "P(B)");
-        ProbabilityUtils.requirePossibleIntersection(probAAndB, probA, probB, "P(A und B)");
-        return probA + probB - probAAndB;
+        probAAndB = ProbabilityUtils.requirePossibleIntersection(probAAndB, probA, probB, "P(A und B)");
+        return ProbabilityUtils.computedProbability(probA + probB - probAAndB);
     }
 
     public static double getProbNotAOrB(double probA, double probB, double probNotAAndB) {
         double probNotA = getProbNotA(probA);
         ProbabilityUtils.requireProbability(probB, "P(B)");
-        ProbabilityUtils.requirePossibleIntersection(probNotAAndB, probNotA, probB, "P(nicht A und B)");
-        return (1 - probA) + probB - probNotAAndB;
+        probNotAAndB = ProbabilityUtils.requirePossibleIntersection(probNotAAndB, probNotA, probB, "P(nicht A und B)");
+        return ProbabilityUtils.computedProbability((1 - probA) + probB - probNotAAndB);
     }
 
     public static double getProbAOrNotB(double probA, double probB, double probAAndNotB) {
         double probNotB = getProbNotB(probB);
         ProbabilityUtils.requireProbability(probA, "P(A)");
-        ProbabilityUtils.requirePossibleIntersection(probAAndNotB, probA, probNotB, "P(A und nicht B)");
-        return probA + (1 - probB) - probAAndNotB;
+        probAAndNotB = ProbabilityUtils.requirePossibleIntersection(probAAndNotB, probA, probNotB, "P(A und nicht B)");
+        return ProbabilityUtils.computedProbability(probA + (1 - probB) - probAAndNotB);
     }
 
     public static double getProbNotAOrNotB(double probAAndB) {

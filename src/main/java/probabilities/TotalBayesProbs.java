@@ -18,21 +18,29 @@ public class TotalBayesProbs extends BaseProbabilities {
             throw new ProbabilityException("Listen duerfen nicht leer sein.", "Lists must not be empty.");
         }
         if (probBGivenA_i.size() != probA_i.size()) throw new ProbabilityException("Listen muessen gleich lang sein!", "Lists must have the same length.");
+        List<Double> priors = normalizedPriors(probA_i);
         double sum = 0.0;
-        double priorSum = 0.0;
         for (int i = 0; i < probBGivenA_i.size(); i++) {
             if (probBGivenA_i.get(i) == null || probA_i.get(i) == null) {
                 throw new ProbabilityException("Listenwerte duerfen nicht null sein.", "List entries must not be null.");
             }
             double probBGivenA = ProbabilityUtils.requireProbability(probBGivenA_i.get(i), "P(B|A" + (i + 1) + ")");
-            double probA = ProbabilityUtils.requireProbability(probA_i.get(i), "P(A" + (i + 1) + ")");
-            priorSum += probA;
+            double probA = priors.get(i);
             sum += probA * probBGivenA;
         }
+        return ProbabilityUtils.computedProbability(sum);
+    }
+
+    static List<Double> normalizedPriors(List<Double> values) {
+        if (values == null || values.isEmpty() || values.stream().anyMatch(java.util.Objects::isNull)) {
+            throw new ProbabilityException("Basiswerte duerfen nicht leer oder null sein.", "Priors must not be empty or null.");
+        }
+        values.forEach(value -> ProbabilityUtils.requireProbability(value, "P(A_i)"));
+        double priorSum = values.stream().mapToDouble(Double::doubleValue).sum();
         if (Math.abs(priorSum - 1.0) > 1e-9) {
             throw new ProbabilityException("Die Basiswahrscheinlichkeiten P(A_i) muessen zusammen 1 ergeben.", "Prior probabilities P(A_i) must sum to 1.");
         }
-        return sum;
+        return values.stream().map(value -> value / priorSum).toList();
     }
 
     /**

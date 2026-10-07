@@ -4,6 +4,10 @@ import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JCheckBox;
+import javax.swing.JFileChooser;
+import javax.swing.RowFilter;
+import javax.swing.table.TableRowSorter;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
@@ -35,11 +39,18 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.awt.Rectangle;
+import java.awt.event.MouseEvent;
+import java.awt.geom.Path2D;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.awt.event.ItemEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.datatransfer.StringSelection;
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -87,13 +98,21 @@ public class ProbabilityCalculatorGUI extends JFrame {
     private final ExecutorService historyWriter = Executors.newSingleThreadExecutor();
     private boolean rememberHistory = true;
     private boolean historyLoadFailed;
+    private boolean historyWritable;
     private DefaultTableModel historyModel;
     private JTable historyTable;
     private JTextArea historyDetails;
     private JCheckBox historyRemember;
+    private JTextField historySearch;
+    private JComboBox<String> historyTypeFilter;
+    private JCheckBox favoritesOnly;
+    private TableRowSorter<DefaultTableModel> historySorter;
+    private JLabel historyCount;
+    private JCheckBox favoriteToggle;
     private JTabbedPane resultTabs;
     private SwingWorker<CalculationService.Result, Void> calculationWorker;
     private CalculationService.Result lastResult;
+    private CalculationRequest lastRequest;
     private JButton calculateButton;
     private boolean rebuildingLanguage;
 
@@ -117,6 +136,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
         configureLookAndFeel();
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setMinimumSize(new Dimension(980, 720));
+        try { historyWritable = historyStore.acquireSessionLock(); }
+        catch (IOException exception) { historyWritable = false; }
         try {
             HistoryStore.State state = historyStore.load();
             rememberHistory = state.remember();
@@ -130,6 +151,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosed(WindowEvent event) {
                 cancelCalculation();
+                historyWriter.execute(() -> {
+                    try { historyStore.releaseSessionLock(); }
+                    catch (IOException ignored) { /* The OS also releases the lock on exit. */ }
+                });
                 historyWriter.shutdown();
             }
         });
@@ -307,12 +332,30 @@ public class ProbabilityCalculatorGUI extends JFrame {
         });
         JPanel resultActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 2));
         resultActions.add(copy);
+        resultActions.add(actionButton(t("export.csv"), () -> {
+            if (lastResult != null && lastRequest != null) {
+                CalculationRequest request = lastRequest;
+                List<CalculationService.Value> values = lastResult.values();
+                exportFile("csv", path -> Files.writeString(path, ExportService.resultsCsv(request, values), StandardCharsets.UTF_8));
+            }
+        }));
         resultPanel.add(resultActions, BorderLayout.SOUTH);
 
         JPanel graphPanel = new JPanel(new BorderLayout());
         graphPanel.setBackground(PANEL_BG);
         graphPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(BORDER), t("panel.plot")));
         graphPanel.add(chartPanel, BorderLayout.CENTER);
+        JPanel graphActions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 4, 2));
+        graphActions.add(infoButton(t("button.info"), t("info.plot")));
+        graphActions.add(actionButton(t("export.png"), () -> {
+            if (lastResult != null) {
+                BufferedImage image = chartPanel.snapshot();
+                exportFile("png", path -> {
+                    if (!ImageIO.write(image, "png", path.toFile())) throw new IOException("PNG encoder unavailable");
+                });
+            }
+        }));
+        graphPanel.add(graphActions, BorderLayout.SOUTH);
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(0, 0, 8, 0);
@@ -584,11 +627,12 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 calculationWorker = null;
                 try {
                     lastResult = get();
+                    lastRequest = request;
                     displayResult(lastResult);
                     statusLabel.setText(t("status.success"));
                     if (record) {
                         history.add(0, new HistoryStore.Entry(Instant.now(), request, output.getText()));
-                        if (history.size() > HistoryStore.LIMIT) history.remove(history.size() - 1);
+                        HistoryStore.trim(history);
                         refreshHistory();
                         saveHistory();
                     }
@@ -636,7 +680,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
         output.setText(builder.toString());
         output.setCaretPosition(0);
         String chartTitle = t("chart." + activeType.name().toLowerCase(Locale.ROOT));
-        if (!result.groups().isEmpty()) {
+        chartPanel.locale = locale;
+        if (result.normalPlot() != null) {
+            chartPanel.setNormalCurve(result.normalPlot(), result.shares().stream().map(this::segment).toList(), chartTitle);
+        } else if (!result.groups().isEmpty()) {
             chartPanel.setStackedBars(result.groups().stream().map(group -> new BarGroup(label(group.label()),
                     group.shares().stream().map(this::segment).toList())).toList(), chartTitle);
         } else if (!result.points().isEmpty()) {
@@ -662,15 +709,49 @@ public class ProbabilityCalculatorGUI extends JFrame {
     private JPanel createHistoryPanel() {
         JPanel panel = new JPanel(new BorderLayout(8, 8));
         panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        historyModel = new DefaultTableModel(new String[]{t("history.time"), t("history.analysis"), t("history.inputs")}, 0) {
+        historyModel = new DefaultTableModel(new String[]{t("history.favorite"), t("history.name"), t("history.time"), t("history.analysis")}, 0) {
             @Override public boolean isCellEditable(int row, int column) { return false; }
+            @Override public Class<?> getColumnClass(int column) { return column == 0 ? Boolean.class : String.class; }
         };
         historyTable = new JTable(historyModel);
+        historySorter = new TableRowSorter<>(historyModel);
+        historyTable.setRowSorter(historySorter);
         historyTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         historyTable.setRowHeight(25);
-        historyTable.getColumnModel().getColumn(0).setPreferredWidth(150);
-        historyTable.getColumnModel().getColumn(1).setPreferredWidth(110);
-        historyTable.getColumnModel().getColumn(2).setPreferredWidth(250);
+        historyTable.setFont(historyTable.getFont().deriveFont(12f));
+        historyTable.getColumnModel().getColumn(0).setMaxWidth(75);
+        historyTable.getColumnModel().getColumn(1).setPreferredWidth(140);
+        historyTable.getColumnModel().getColumn(2).setPreferredWidth(160);
+        historyTable.getColumnModel().getColumn(3).setPreferredWidth(130);
+        historySearch = new JTextField(12);
+        historySearch.getAccessibleContext().setAccessibleName(t("history.search"));
+        historyTypeFilter = new JComboBox<>();
+        historyTypeFilter.addItem(t("history.all"));
+        for (AnalysisType type : AnalysisType.values()) historyTypeFilter.addItem(type.comboLabel(language));
+        favoritesOnly = new JCheckBox(t("history.favoritesOnly"));
+        historyCount = new JLabel();
+        JPanel filters = new JPanel(new GridBagLayout());
+        GridBagConstraints filter = new GridBagConstraints();
+        filter.insets = new Insets(0, 0, 4, 6);
+        filters.add(new JLabel(t("history.search")), filter);
+        filter.gridx = 1; filter.weightx = 1; filter.fill = GridBagConstraints.HORIZONTAL;
+        filters.add(historySearch, filter);
+        filter.gridx = 2; filter.weightx = 0;
+        filters.add(infoButton(t("button.info"), t("info.history")), filter);
+        filter.gridx = 0; filter.gridy = 1; filter.gridwidth = 2;
+        filters.add(historyTypeFilter, filter);
+        filter.gridx = 2; filter.gridwidth = 1;
+        filters.add(favoritesOnly, filter);
+        filter.gridx = 0; filter.gridy = 2; filter.gridwidth = 3;
+        filters.add(historyCount, filter);
+        panel.add(filters, BorderLayout.NORTH);
+        historySearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent event) { filterHistory(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent event) { filterHistory(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent event) { filterHistory(); }
+        });
+        historyTypeFilter.addActionListener(event -> filterHistory());
+        favoritesOnly.addActionListener(event -> filterHistory());
         historyDetails = new JTextArea(9, 30);
         historyDetails.setEditable(false);
         historyDetails.setLineWrap(true);
@@ -682,18 +763,24 @@ public class ProbabilityCalculatorGUI extends JFrame {
         split.setBorder(BorderFactory.createEmptyBorder());
         panel.add(split, BorderLayout.CENTER);
         historyTable.getSelectionModel().addListSelectionListener(event -> {
-            int row = historyTable.getSelectedRow();
-            if (row >= 0 && row < history.size()) {
+            int row = selectedHistoryIndex();
+            if (row >= 0) {
                 HistoryStore.Entry entry = history.get(row);
-                historyDetails.setText(t("history.inputs") + "\n" + inputSummary(entry.request(), "\n")
+                historyDetails.setText((entry.name().isBlank() ? "" : entry.name() + "\n\n")
+                        + t("history.inputs") + "\n" + inputSummary(entry.request(), "\n")
                         + "\n\n" + entry.result());
                 historyDetails.setCaretPosition(0);
+                favoriteToggle.setSelected(entry.favorite());
+            } else {
+                historyDetails.setText(history.isEmpty() ? t("history.empty") : "");
+                favoriteToggle.setSelected(false);
             }
+            favoriteToggle.setEnabled(row >= 0);
         });
         JPanel actions = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
         JButton restore = new JButton(t("history.restore"));
         restore.addActionListener(event -> {
-            int row = historyTable.getSelectedRow();
+            int row = selectedHistoryIndex();
             if (row < 0) return;
             CalculationRequest request = history.get(row).request();
             AnalysisType type = AnalysisType.valueOf(request.analysis());
@@ -703,7 +790,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
         });
         JButton delete = new JButton(t("history.delete"));
         delete.addActionListener(event -> {
-            int row = historyTable.getSelectedRow();
+            int row = selectedHistoryIndex();
             if (row >= 0) { history.remove(row); refreshHistory(); saveHistory(); }
         });
         JButton clear = new JButton(t("history.clear"));
@@ -712,25 +799,67 @@ public class ProbabilityCalculatorGUI extends JFrame {
                     JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
                 history.clear();
                 historyLoadFailed = false;
-                historyRemember.setEnabled(true);
+                historyRemember.setEnabled(historyWritable);
                 refreshHistory();
                 saveHistory();
             }
         });
         actions.add(restore); actions.add(delete); actions.add(clear);
-        JPanel controls = new JPanel(new BorderLayout(4, 8));
+        JPanel management = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
+        favoriteToggle = new JCheckBox(t("history.favorite"));
+        favoriteToggle.setToolTipText(t("history.favoriteTip"));
+        favoriteToggle.addActionListener(event -> {
+            int row = selectedHistoryIndex();
+            if (row < 0) return;
+            if (favoriteToggle.isSelected() && history.stream().filter(HistoryStore.Entry::favorite).count() >= HistoryStore.FAVORITE_LIMIT) {
+                favoriteToggle.setSelected(false);
+                JOptionPane.showMessageDialog(this, t("history.favoriteLimit"));
+                return;
+            }
+            history.set(row, history.get(row).withFavorite(favoriteToggle.isSelected()));
+            HistoryStore.trim(history);
+            refreshHistory(); saveHistory();
+        });
+        JButton rename = actionButton(t("history.rename"), () -> {
+            int row = selectedHistoryIndex();
+            if (row < 0) return;
+            String name = JOptionPane.showInputDialog(this, t("history.namePrompt"), history.get(row).name());
+            if (name == null) return;
+            if (name.length() > 80) { JOptionPane.showMessageDialog(this, t("history.nameLimit")); return; }
+            history.set(row, history.get(row).withName(name));
+            refreshHistory(); saveHistory();
+        });
+        management.add(favoriteToggle); management.add(rename);
+        management.add(actionButton(t("export.csv"), () -> {
+            List<HistoryStore.Entry> visible = new ArrayList<>();
+            for (int row = 0; row < historyTable.getRowCount(); row++) {
+                visible.add(history.get(historyTable.convertRowIndexToModel(row)));
+            }
+            if (!visible.isEmpty()) {
+                exportFile("csv", path -> Files.writeString(path, ExportService.historyCsv(visible), StandardCharsets.UTF_8));
+            }
+        }));
+        JPanel controls = new JPanel(new GridBagLayout());
+        GridBagConstraints control = new GridBagConstraints();
+        control.gridx = 0; control.weightx = 1; control.fill = GridBagConstraints.HORIZONTAL;
+        control.insets = new Insets(0, 0, 6, 0);
         JCheckBox remember = new JCheckBox(t("history.remember"), rememberHistory);
         historyRemember = remember;
-        remember.setEnabled(!historyLoadFailed);
+        remember.setEnabled(!historyLoadFailed && historyWritable);
         remember.setToolTipText(t("history.privacy"));
         remember.addActionListener(event -> { rememberHistory = remember.isSelected(); saveHistory(); });
-        controls.add(remember, BorderLayout.NORTH);
-        controls.add(actions, BorderLayout.SOUTH);
-        JButton historyInfo = infoButton(t("button.info"), t("info.history"));
-        controls.add(historyInfo, BorderLayout.EAST);
+        controls.add(management, control);
+        control.gridy = 1; controls.add(actions, control);
+        control.gridy = 2; controls.add(remember, control);
+        if (!historyWritable) {
+            JTextArea notice = new JTextArea(t("history.readOnly"));
+            notice.setEditable(false); notice.setLineWrap(true); notice.setWrapStyleWord(true);
+            notice.setRows(3); notice.setBackground(controls.getBackground());
+            control.gridy = 3; controls.add(notice, control);
+        }
         panel.add(controls, BorderLayout.SOUTH);
         refreshHistory();
-        if (!history.isEmpty()) historyTable.setRowSelectionInterval(0, 0);
+        if (historyTable.getRowCount() > 0) historyTable.setRowSelectionInterval(0, 0);
         return panel;
     }
 
@@ -741,17 +870,72 @@ public class ProbabilityCalculatorGUI extends JFrame {
 
     private void refreshHistory() {
         if (historyModel == null) return;
+        int selected = selectedHistoryIndex();
+        String selectedId = selected < 0 ? null : history.get(selected).id();
         historyModel.setRowCount(0);
         DateTimeFormatter time = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss").withZone(ZoneId.systemDefault());
         for (HistoryStore.Entry entry : history) {
-            historyModel.addRow(new String[]{time.format(entry.time()), AnalysisType.valueOf(entry.request().analysis()).comboLabel(language),
-                    inputSummary(entry.request(), "; ")});
+            historyModel.addRow(new Object[]{entry.favorite(), entry.name(), time.format(entry.time()),
+                    AnalysisType.valueOf(entry.request().analysis()).comboLabel(language)});
         }
-        historyDetails.setText(history.isEmpty() ? t("history.empty") : "");
+        filterHistory();
+        for (int i = 0; i < history.size(); i++) {
+            if (history.get(i).id().equals(selectedId)) {
+                int view = historyTable.convertRowIndexToView(i);
+                if (view >= 0) historyTable.setRowSelectionInterval(view, view);
+            }
+        }
+        if (historyTable.getSelectedRow() < 0) historyDetails.setText(history.isEmpty() ? t("history.empty") : "");
+    }
+
+    private int selectedHistoryIndex() {
+        if (historyTable == null || historyTable.getSelectedRow() < 0) return -1;
+        int row = historyTable.convertRowIndexToModel(historyTable.getSelectedRow());
+        return row < history.size() ? row : -1;
+    }
+
+    private void filterHistory() {
+        String query = historySearch.getText().strip().toLowerCase(Locale.ROOT);
+        int type = historyTypeFilter.getSelectedIndex();
+        historySorter.setRowFilter(new RowFilter<>() {
+            @Override public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> row) {
+                HistoryStore.Entry entry = history.get(row.getIdentifier());
+                return (!favoritesOnly.isSelected() || entry.favorite())
+                        && (type <= 0 || entry.request().analysis().equals(AnalysisType.values()[type - 1].name()))
+                        && (entry.name() + " " + entry.request().analysis() + " " + inputSummary(entry.request(), " ")
+                        + " " + entry.result() + " " + row.getStringValue(2) + " " + row.getStringValue(3))
+                        .toLowerCase(Locale.ROOT).contains(query);
+            }
+        });
+        historyCount.setText(historyTable.getRowCount() + " / " + history.size() + " " + t("history.entries"));
+    }
+
+    @FunctionalInterface
+    private interface FileExport { void write(Path path) throws IOException; }
+
+    private void exportFile(String extension, FileExport export) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileFilter(new FileNameExtensionFilter(extension.toUpperCase(Locale.ROOT), extension));
+        chooser.setSelectedFile(new java.io.File("probability-calculator." + extension));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        Path chosen = chooser.getSelectedFile().toPath();
+        if (!chosen.toString().toLowerCase(Locale.ROOT).endsWith("." + extension)) chosen = Path.of(chosen + "." + extension);
+        Path target = chosen;
+        if (Files.exists(target) && JOptionPane.showConfirmDialog(this, t("export.overwrite"), t("export.title"),
+                JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+        historyWriter.execute(() -> {
+            try {
+                export.write(target);
+                SwingUtilities.invokeLater(() -> statusLabel.setText(t("export.success")));
+            } catch (IOException exception) {
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, t("export.error"),
+                        t("export.title"), JOptionPane.ERROR_MESSAGE));
+            }
+        });
     }
 
     private void saveHistory() {
-        if (historyLoadFailed || historyWriter.isShutdown()) return;
+        if (!historyWritable || historyLoadFailed || historyWriter.isShutdown()) return;
         HistoryStore.State state = new HistoryStore.State(rememberHistory, language.name(), history);
         historyWriter.execute(() -> {
             try { historyStore.save(state); }
@@ -806,7 +990,26 @@ public class ProbabilityCalculatorGUI extends JFrame {
             case "history.delete" -> de ? "Eintrag loeschen" : "Delete entry";
             case "history.clear" -> de ? "Verlauf leeren" : "Clear history";
             case "history.confirm" -> de ? "Alle Eintraege im Verlauf loeschen?" : "Delete all history entries?";
-            case "history.remember" -> de ? "Verlauf lokal speichern (letzte 100)" : "Save history locally (last 100)";
+            case "history.remember" -> de ? "Verlauf lokal speichern" : "Save history locally";
+            case "history.search" -> de ? "Suche" : "Search";
+            case "history.all" -> de ? "Alle Berechnungsarten" : "All calculation types";
+            case "history.favorite" -> de ? "Favorit" : "Favorite";
+            case "history.favoritesOnly" -> de ? "Nur Favoriten" : "Favorites only";
+            case "history.favoriteTip" -> de ? "Favoriten bleiben beim automatischen Aufraeumen erhalten." : "Favorites are retained during automatic history cleanup.";
+            case "history.favoriteLimit" -> de ? "Maximal 100 Favoriten. Entferne zuerst eine andere Markierung." : "Maximum 100 favorites. Unmark another entry first.";
+            case "history.name" -> de ? "Name" : "Name";
+            case "history.rename" -> de ? "Benennen" : "Rename";
+            case "history.namePrompt" -> de ? "Name fuer diesen Eintrag (max. 80 Zeichen):" : "Name for this entry (max. 80 characters):";
+            case "history.nameLimit" -> de ? "Der Name darf maximal 80 Zeichen enthalten." : "The name must not exceed 80 characters.";
+            case "history.entries" -> de ? "Eintraege" : "entries";
+            case "history.readOnly" -> de ? "Lokales Speichern ist in diesem Fenster gesperrt. Ein anderes Fenster nutzt den Verlauf oder die Datei ist nicht beschreibbar. Aenderungen gelten nur fuer diese Sitzung." : "Local saving is unavailable in this window. Another window owns the history or the file is not writable. Changes apply to this session only.";
+            case "export.csv" -> "CSV";
+            case "export.png" -> "PNG";
+            case "export.title" -> de ? "Export" : "Export";
+            case "export.overwrite" -> de ? "Vorhandene Datei ersetzen?" : "Replace the existing file?";
+            case "export.success" -> de ? "Datei exportiert." : "File exported.";
+            case "export.error" -> de ? "Die Datei konnte nicht geschrieben werden." : "The file could not be written.";
+            case "info.plot" -> de ? "Bewege den Mauszeiger ueber einen Balken oder die Normalverteilung, um Werte zu sehen. Die Normalverteilung zeigt die Dichtekurve von Mittelwert minus 4 bis plus 4 Standardabweichungen. Die farbigen Flaechen unterscheiden Werte unterhalb, innerhalb und oberhalb des eingegebenen Intervalls. Wahrscheinlichkeiten werden exakt mit der Verteilungsfunktion berechnet, auch ausserhalb des sichtbaren Bereichs. f(x) ist eine Dichte, keine Wahrscheinlichkeit. PNG exportiert das aktuelle Diagramm mit doppelter Aufloesung. CSV bei den Ergebnissen exportiert Originaleingaben, Zahlenwerte und Prozentwerte; bei Dichten, Mittelwerten und Varianzen bleibt die Prozentspalte leer." : "Hover over a bar or the normal distribution to inspect values. The normal plot shows the density curve from the mean minus 4 to plus 4 standard deviations. Colored areas distinguish values below, inside and above the input interval. Probabilities use the distribution function, including tails outside the visible range. f(x) is a density, not a probability. PNG exports the current plot at double resolution. Result CSV includes original inputs, numerical values and percentages; densities, means and variances have no percentage.";
             case "history.privacy" -> de ? "Nur auf diesem Rechner. Deaktivieren entfernt gespeicherte Berechnungen; die aktuelle Sitzung bleibt sichtbar." : "Only on this computer. Disabling removes saved calculations; the current session remains visible.";
             case "history.empty" -> de ? "Noch keine gespeicherten Berechnungen." : "No calculations saved yet.";
             case "history.saveError" -> de ? "Verlauf konnte nicht gespeichert werden; Eintraege bleiben in dieser Sitzung erhalten." : "History could not be saved; entries remain available in this session.";
@@ -818,7 +1021,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
             case "segment.givenB" -> de ? "Gegeben B" : "Given B";
             case "segment.other" -> de ? "Weitere A_i" : "Other A_i";
             case "info.discreteExtras" -> de ? "Zusaetzliche Ergebnisse: Pr(X > k) ist die Wahrscheinlichkeit fuer mehr als k Ereignisse. SD(X) = sqrt(Var(X)) beschreibt die Streuung in der Einheit der Zaehlwerte. Erwartungswert, Varianz, Standardabweichung und Dichte sind keine Prozentwerte. Das Diagramm zeigt den zentralen Bereich zwischen den Quantilen 0,01% und 99,99%; bei grossen Bereichen werden benachbarte Zaehlwerte zusammengefasst. Rote Balken enthalten den gewaehlten Wert k. Die numerischen Ergebnisse verwenden immer die eingegebenen Grenzen, unabhaengig vom Diagrammausschnitt. Fuer Poisson gilt 0 < lambda <= 1e9." : "Additional results: Pr(X > k) is the probability of more than k events. SD(X) = sqrt(Var(X)) describes spread in count units. Mean, variance, standard deviation and density are not percentages. The plot shows the central range between the 0.01% and 99.99% quantiles; large ranges aggregate adjacent counts. Red bars contain the selected value k. Numerical results always use the entered bounds regardless of the plotted range. For Poisson, 0 < lambda <= 1e9.";
-            case "info.history" -> de ? "Der Verlauf speichert die letzten 100 erfolgreichen Berechnungen mit Zeitpunkt, Berechnungsart, Originaleingaben und Ergebnistext. Eintrag auswaehlen, um alle Details zu sehen. 'Erneut laden' uebernimmt die Werte und berechnet sie in der aktuellen Sprache neu, ohne einen doppelten Verlaufseintrag. Einzelne Eintraege koennen geloescht oder der gesamte Verlauf geleert werden. Bei aktivierter lokaler Speicherung bleiben Eintraege nach einem Neustart erhalten. Die Datei liegt unter ~/.probability-calculator/history.xml. Deaktivieren entfernt gespeicherte Berechnungen von der Festplatte; der Verlauf der laufenden Sitzung bleibt verfuegbar. Es werden keine Daten uebertragen. Ergebnis kopieren uebertraegt den aktuellen Ergebnistext in die Zwischenablage." : "History keeps the last 100 successful calculations with time, calculation type, original inputs and result text. Select an entry to inspect its details. Restore fills the inputs and recalculates in the current language without adding a duplicate entry. Delete individual entries or clear the whole history. With local saving enabled, entries survive restarts. The file is stored at ~/.probability-calculator/history.xml. Disabling removes saved calculations from disk while keeping the current session available. No data is transmitted. Copy result places the current result text on the clipboard.";
+            case "info.history" -> de ? "Der Verlauf behaelt 100 aktuelle Berechnungen und zusaetzlich bis zu 100 Favoriten. Favoriten werden nicht automatisch entfernt und koennen benannt werden. Die Suche umfasst Namen, Eingaben, Berechnungsarten und Ergebnisse. Filter und Spaltensortierung bestimmen, welche Eintraege CSV exportiert. Der Export enthaelt Originaleingaben und den gespeicherten Ergebnistext in UTF-8. 'Erneut laden' berechnet einen Eintrag in der aktuellen Sprache, ohne ein Duplikat zu erstellen. Lokale Speicherung erfolgt ausschliesslich in ~/.probability-calculator/history.xml. Deaktivieren entfernt gespeicherte Berechnungen; die aktuelle Sitzung bleibt erhalten. Bei mehreren Fenstern darf nur das zuerst gestartete Fenster speichern, damit nichts ueberschrieben wird. Weitere Fenster arbeiten nur in ihrer Sitzung. Es werden keine Daten uebertragen." : "History retains 100 recent calculations plus up to 100 favorites. Favorites are not removed automatically and can be named. Search covers names, inputs, calculation types and results. Filters and column sorting determine which entries CSV exports. Export includes original inputs and saved result text in UTF-8. Restore recalculates in the current language without creating a duplicate. Local saving uses only ~/.probability-calculator/history.xml. Disabling removes saved calculations while retaining the current session. With multiple windows, only the first may save to prevent overwrites. Other windows work in their session only. No data is transmitted.";
             case "status.ready" -> de ? "Bereit" : "Ready";
             case "status.success" -> de ? "Berechnung erfolgreich" : "Calculation successful";
             case "status.checkInput" -> de ? "Eingabe prüfen" : "Check input";
@@ -843,7 +1046,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
             case "chart.bayes" -> de ? "Beiträge zu Pr(B) = Summe Pr(B|A_i) * Pr(A_i)" : "Contributions to Pr(B) = sum Pr(B|A_i) * Pr(A_i)";
             case "chart.binomial" -> de ? "Binomialverteilung Pr(X = k)" : "Binomial distribution Pr(X = k)";
             case "chart.poisson" -> de ? "Poissonverteilung Pr(X = k)" : "Poisson distribution Pr(X = k)";
-            case "chart.normal" -> de ? "Normalverteilung: Flächenanteile" : "Normal distribution: area proportions";
+            case "chart.normal" -> de ? "Normalverteilung: Dichte und Flaechen" : "Normal distribution: density and areas";
             case "result.aWithoutB" -> de ? "Pr(A ohne B)" : "Pr(A without B)";
             case "result.bWithoutA" -> de ? "Pr(B ohne A)" : "Pr(B without A)";
             case "result.contribution" -> de ? "Beitrag" : "Contribution";
@@ -1386,7 +1589,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
             EMPTY,
             SEGMENTS,
             STACKED_BARS,
-            DISCRETE_BARS
+            DISCRETE_BARS,
+            NORMAL_CURVE
         }
 
         private Mode mode = Mode.EMPTY;
@@ -1394,10 +1598,15 @@ public class ProbabilityCalculatorGUI extends JFrame {
         private List<Segment> segments = List.of();
         private List<BarGroup> barGroups = List.of();
         private List<DataPoint> dataPoints = List.of();
+        private CalculationService.NormalPlot normalPlot;
+        private Locale locale = Locale.GERMANY;
+        private final List<HitRegion> hitRegions = new ArrayList<>();
+        private record HitRegion(Rectangle bounds, String text) { }
 
         private ChartPanel() {
             setPreferredSize(new Dimension(540, 280));
             setBackground(Color.WHITE);
+            setToolTipText("");
             clear(title);
         }
 
@@ -1407,7 +1616,96 @@ public class ProbabilityCalculatorGUI extends JFrame {
             segments = List.of();
             barGroups = List.of();
             dataPoints = List.of();
+            normalPlot = null;
+            hitRegions.clear();
             repaint();
+        }
+
+        private void setNormalCurve(CalculationService.NormalPlot plot, List<Segment> segments, String title) {
+            this.mode = Mode.NORMAL_CURVE;
+            this.normalPlot = plot;
+            this.segments = segments;
+            this.title = title;
+            repaint();
+        }
+
+        private BufferedImage snapshot() {
+            BufferedImage image = new BufferedImage(Math.max(1, getWidth() * 2), Math.max(1, getHeight() * 2), BufferedImage.TYPE_INT_RGB);
+            Graphics2D graphics = image.createGraphics();
+            graphics.scale(2, 2);
+            printAll(graphics);
+            graphics.dispose();
+            return image;
+        }
+
+        @Override public String getToolTipText(MouseEvent event) {
+            if (mode == Mode.NORMAL_CURVE) {
+                Rectangle bounds = normalBounds();
+                if (!bounds.contains(event.getPoint())) return null;
+                double z = -4 + 8.0 * (event.getX() - bounds.x) / bounds.width;
+                double x = Math.fma(z, normalPlot.standardDeviation(), normalPlot.mean());
+                double density = ProbabilityDistributions.normalDensity(normalPlot.mean(), normalPlot.standardDeviation(), normalPlot.mean()) * Math.exp(-0.5 * z * z);
+                double cdf = ProbabilityDistributions.normalCumulative(0, 1, z);
+                String position = Double.isFinite(x) ? String.format(locale, "x = %.6g", x) : String.format(locale, "z = %.6g", z);
+                return String.format(locale, "<html>%s<br>f(x) = %.6g<br>Pr(X &lt;= x) = %.6g (%.4f%%)</html>", position, density, cdf, cdf * 100);
+            }
+            for (HitRegion region : hitRegions) if (region.bounds().contains(event.getPoint())) return region.text();
+            return null;
+        }
+
+        private Rectangle normalBounds() {
+            return new Rectangle(68, 54, Math.max(1, getWidth() - 106), Math.max(35, getHeight() - 134));
+        }
+
+        private void paintNormalCurve(Graphics2D g) {
+            Rectangle bounds = normalBounds();
+            double lower = ProbabilityDistributions.standardized(normalPlot.mean(), normalPlot.standardDeviation(), normalPlot.lower());
+            double upper = ProbabilityDistributions.standardized(normalPlot.mean(), normalPlot.standardDeviation(), normalPlot.upper());
+            double peak = ProbabilityDistributions.normalDensity(normalPlot.mean(), normalPlot.standardDeviation(), normalPlot.mean());
+            int baseline = bounds.y + bounds.height;
+            g.setFont(g.getFont().deriveFont(10f));
+            for (int tick = 0; tick <= 4; tick++) {
+                int y = baseline - tick * bounds.height / 4;
+                g.setColor(new Color(218, 218, 218));
+                g.drawLine(bounds.x, y, bounds.x + bounds.width, y);
+                g.setColor(new Color(65, 65, 65));
+                String text = String.format(locale, "%.2g", peak * tick / 4);
+                g.drawString(text, Math.max(4, bounds.x - g.getFontMetrics().stringWidth(text) - 6), y + 4);
+            }
+            Path2D curve = new Path2D.Double();
+            for (int pixel = 0; pixel <= bounds.width; pixel++) {
+                double z = -4 + 8.0 * pixel / bounds.width;
+                double y = baseline - bounds.height * Math.exp(-0.5 * z * z);
+                Color color = z < lower ? GRAPH_BLUE : z <= upper ? GRAPH_GREEN : GRAPH_RED;
+                g.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 115));
+                g.drawLine(bounds.x + pixel, baseline, bounds.x + pixel, (int) Math.round(y));
+                if (pixel == 0) curve.moveTo(bounds.x + pixel, y);
+                else curve.lineTo(bounds.x + pixel, y);
+            }
+            g.setColor(new Color(45, 45, 45));
+            g.setStroke(new BasicStroke(1.6f));
+            g.draw(curve);
+            g.drawLine(bounds.x, baseline, bounds.x + bounds.width, baseline);
+            g.drawLine(bounds.x, bounds.y, bounds.x, baseline);
+            g.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 1f, new float[]{4, 4}, 0));
+            for (double z : new double[]{lower, upper}) {
+                if (z >= -4 && z <= 4) {
+                    int x = bounds.x + (int) Math.round(bounds.width * (z + 4) / 8);
+                    g.drawLine(x, bounds.y, x, baseline);
+                }
+            }
+            g.setStroke(new BasicStroke(1f));
+            boolean zAxis = !Double.isFinite(Math.fma(-4, normalPlot.standardDeviation(), normalPlot.mean()))
+                    || !Double.isFinite(Math.fma(4, normalPlot.standardDeviation(), normalPlot.mean()));
+            for (int z = -4; z <= 4; z += 2) {
+                int x = bounds.x + bounds.width * (z + 4) / 8;
+                double value = zAxis ? z : Math.fma(z, normalPlot.standardDeviation(), normalPlot.mean());
+                String text = String.format(locale, "%.4g", value);
+                int width = g.getFontMetrics().stringWidth(text);
+                g.drawString(text, Math.max(4, Math.min(getWidth() - width - 8, x - width / 2)), baseline + 18);
+            }
+            g.drawString(zAxis ? "z" : "x", bounds.x + bounds.width / 2, baseline + 32);
+            paintLegend(g, segments, 24, baseline + 42);
         }
 
         private void setSegments(List<Segment> segments, String title) {
@@ -1443,6 +1741,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             paintBackground(g);
+            hitRegions.clear();
             if (mode != Mode.EMPTY) paintTitle(g);
 
             if (mode == Mode.EMPTY) {
@@ -1452,6 +1751,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 paintLegend(g, segments, 62, getHeight() / 2 + 72);
             } else if (mode == Mode.STACKED_BARS) {
                 paintStackedBars(g);
+            } else if (mode == Mode.NORMAL_CURVE) {
+                paintNormalCurve(g);
             } else {
                 paintDiscreteBars(g);
             }
@@ -1540,6 +1841,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 int y = chartY + chartHeight - height;
                 g.setColor(point.color());
                 g.fillRect(x, y, barWidth, height);
+                hitRegions.add(new HitRegion(new Rectangle(x, y, barWidth, Math.max(5, height)),
+                        String.format(locale, "%s: %.8g (%.4f%%)", point.label(), point.value(), point.value() * 100)));
                 g.setColor(new Color(80, 80, 80));
                 g.drawRect(x, y, barWidth, height);
             }
@@ -1566,9 +1869,11 @@ public class ProbabilityCalculatorGUI extends JFrame {
                         : (int) Math.round(width * segment.value());
                 g.setColor(segment.color());
                 g.fillRect(currentX, y, Math.max(0, segmentWidth), height);
+                hitRegions.add(new HitRegion(new Rectangle(currentX, y, Math.max(0, segmentWidth), height),
+                        String.format(locale, "%s: %.8g (%.4f%%)", segment.label(), segment.value(), segment.value() * 100)));
                 g.setColor(Color.WHITE);
                 if (segmentWidth > 58) {
-                    g.drawString("%.1f%%".formatted(segment.value() * 100.0), currentX + 6, y + height - 9);
+                    g.drawString(String.format(locale, "%.1f%%", segment.value() * 100.0), currentX + 6, y + height - 9);
                 }
                 currentX += segmentWidth;
             }
@@ -1610,6 +1915,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 g.fillRect(currentX, currentY - 10, 12, 12);
                 g.setColor(new Color(40, 40, 40));
                 g.drawString(segment.label(), currentX + 17, currentY);
+                hitRegions.add(new HitRegion(new Rectangle(currentX, currentY - 12, itemWidth, 16),
+                        String.format(locale, "%s: %.8g (%.4f%%)", segment.label(), segment.value(), segment.value() * 100)));
                 currentX += Math.max(110, itemWidth);
             }
         }
