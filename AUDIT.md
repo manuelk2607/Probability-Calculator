@@ -1,6 +1,6 @@
 # Audit / Pruefbericht
 
-Date / Datum: 2026-10-07. Version: 1.4.0.
+Date / Datum: 2026-10-07. Version: 1.4.1.
 
 ## Deutsch
 

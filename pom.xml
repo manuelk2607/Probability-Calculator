@@ -6,7 +6,7 @@
 
     <groupId>org.example</groupId>
     <artifactId>Wahrscheinlichkeitsrechner</artifactId>
-    <version>1.4.0</version>
+    <version>1.4.1</version>
 
     <properties>
         <maven.compiler.release>17</maven.compiler.release>

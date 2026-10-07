@@ -11,7 +11,7 @@ Ein lokaler Java/Swing-Wahrscheinlichkeitsrechner mit kompakter, an Statistikpro
 ### Installation und Bedienung
 
 - Im neuesten Release die passende macOS-DMG, Windows-MSI/EXE, Linux-DEB oder das plattformunabhaengige JAR herunterladen. Die Architektur im Dateinamen muss zum Rechner passen.
-- Native Pakete enthalten Java; keine separate Java-Installation ist noetig. Das JAR benoetigt Java 17 oder neuer: `java -jar Wahrscheinlichkeitsrechner-1.4.0.jar`.
+- Native Pakete enthalten Java; keine separate Java-Installation ist noetig. Das JAR benoetigt Java 17 oder neuer: `java -jar Wahrscheinlichkeitsrechner-1.4.1.jar`.
 - Die macOS-App ist bewusst unsigniert und nicht notarisiert. Nach einem blockierten Start kann diese konkrete App unter **Systemeinstellungen > Datenschutz & Sicherheit** freigegeben werden ([Apple-Anleitung](https://support.apple.com/en-us/102445)). Gatekeeper muss nicht global deaktiviert werden. Windows kann bei unsignierten Downloads ebenfalls warnen. Nur Pakete aus diesem Repository verwenden.
 - Berechnungsart auswaehlen, gelbe Eingabefelder ausfuellen und **Berechnen** anklicken. Graue Felder enthalten Informationen.
 - Dezimalpunkt und Dezimalkomma sind erlaubt. Wahrscheinlichkeiten muessen zwischen 0 und 1 liegen; 25% wird als `0.25` oder `0,25` eingegeben.
@@ -60,7 +60,7 @@ Die App benoetigt keine Datenbank, keinen Account und keine Internetverbindung. 
 ### Installation and Use
 
 - Download the macOS DMG, Windows MSI/EXE, Linux DEB or cross-platform JAR from the latest release. Match the filename architecture to your computer.
-- Native packages bundle Java. The JAR requires Java 17 or newer: `java -jar Wahrscheinlichkeitsrechner-1.4.0.jar`.
+- Native packages bundle Java. The JAR requires Java 17 or newer: `java -jar Wahrscheinlichkeitsrechner-1.4.1.jar`.
 - The macOS app is intentionally unsigned and not notarized. After a blocked start, allow this specific app in **System Settings > Privacy & Security** ([Apple instructions](https://support.apple.com/en-us/102445)). Do not disable Gatekeeper globally. Windows may also warn about unsigned downloads. Use only packages from this repository.
 - Select an analysis, fill the yellow input fields and click **Calculate**. Grey fields display information.
 - Decimal points and commas are accepted. Enter probabilities between 0 and 1, such as `0.25` for 25%.
@@ -111,7 +111,7 @@ Requirements: Java 17+, Maven. Numerical functions use [Apache Commons Statistic
 ```bash
 mvn test
 mvn package
-java -jar target/Wahrscheinlichkeitsrechner-1.4.0.jar
+java -jar target/Wahrscheinlichkeitsrechner-1.4.1.jar
 # Alternative:
 mvn exec:java
 ```

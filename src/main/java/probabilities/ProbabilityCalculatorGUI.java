@@ -1811,9 +1811,9 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 g.drawString(group.label(), 24, y + 22);
                 paintSegmentBar(g, group.segments(), barX, y, barWidth, 28);
                 legendSegments.addAll(group.segments());
-                y += 50;
+                y += 54;
             }
-            paintLegend(g, legendSegments, 24, y + 12);
+            paintLegend(g, legendSegments, 24, y + 24);
         }
 
         private void paintDiscreteBars(Graphics2D g) {
