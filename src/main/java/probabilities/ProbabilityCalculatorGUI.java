@@ -1545,6 +1545,10 @@ public class ProbabilityCalculatorGUI extends JFrame {
         private void addHint(String text) {
             JTextArea hint = createWrappedText(text, LABEL_WIDTH + VALUE_WIDTH);
             hint.setFont(hint.getFont().deriveFont(12f));
+            hint.setSize(new Dimension(LABEL_WIDTH + VALUE_WIDTH, Short.MAX_VALUE));
+            int height = Math.max(20, hint.getUI().getPreferredSize(hint).height) + 2;
+            hint.setPreferredSize(new Dimension(LABEL_WIDTH + VALUE_WIDTH, height));
+            hint.setMinimumSize(new Dimension(LABEL_WIDTH + VALUE_WIDTH, height));
             constraints.gridx = 0;
             constraints.gridy = row++;
             constraints.gridwidth = 2;
@@ -1664,6 +1668,8 @@ public class ProbabilityCalculatorGUI extends JFrame {
             double peak = ProbabilityDistributions.normalDensity(normalPlot.mean(), normalPlot.standardDeviation(), normalPlot.mean());
             int baseline = bounds.y + bounds.height;
             g.setFont(g.getFont().deriveFont(10f));
+            g.setColor(new Color(65, 65, 65));
+            g.drawString("f(x)", 16, bounds.y - 8);
             for (int tick = 0; tick <= 4; tick++) {
                 int y = baseline - tick * bounds.height / 4;
                 g.setColor(new Color(218, 218, 218));
@@ -1705,7 +1711,7 @@ public class ProbabilityCalculatorGUI extends JFrame {
                 g.drawString(text, Math.max(4, Math.min(getWidth() - width - 8, x - width / 2)), baseline + 18);
             }
             g.drawString(zAxis ? "z" : "x", bounds.x + bounds.width / 2, baseline + 32);
-            paintLegend(g, segments, 24, baseline + 42);
+            paintLegend(g, segments, 24, baseline + 56);
         }
 
         private void setSegments(List<Segment> segments, String title) {
